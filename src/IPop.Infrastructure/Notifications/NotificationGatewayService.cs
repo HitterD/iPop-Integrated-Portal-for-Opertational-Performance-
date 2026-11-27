@@ -165,7 +165,8 @@ public sealed class NotificationGatewayService(
         var deliveries = await db.NotificationDeliveries
             .Where(d => d.UserId == userId &&
                         d.Status != NotificationStatus.Read &&
-                        d.Status != NotificationStatus.Acknowledged)
+                        d.Status != NotificationStatus.Acknowledged &&
+                        (d.SnoozedUntil == null || d.SnoozedUntil <= now))
             .ToListAsync(ct);
         if (deliveries.Count == 0) return 0;
 

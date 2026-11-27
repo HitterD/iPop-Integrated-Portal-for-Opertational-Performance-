@@ -512,12 +512,12 @@ public static partial class NotificationGatewayEndpoints
         // ────────────────────────────────────────────────────────────────────────
         // summary=false (the Notifier): only the page and its total, no unread / per-category / snoozed counts.
         v1.MapGet("/inbox", async (string? type, string? status, int? page, int? pageSize, string? category, string? q, bool? summary,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            DateTime? beforeAt, Guid? beforeId, HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
 
-            var result = await ListInboxCore(db, userId.Value, type, status, page ?? 1, pageSize ?? 20, ct, category, q, summary ?? true);
+            var result = await ListInboxCore(db, userId.Value, type, status, page ?? 1, pageSize ?? 20, ct, category, q, summary ?? true, beforeAt, beforeId);
             return Results.Ok(result);
         }).RequireAuthorization();
 
@@ -637,7 +637,8 @@ public static partial class NotificationGatewayEndpoints
     public record InboxListResult(
         IReadOnlyList<InboxItemRow> Items, int TotalCount,
         int UnreadCount, int Page, int PageSize,
-        IReadOnlyDictionary<string, int>? UnreadByCategory = null, int SnoozedCount = 0);
+        IReadOnlyDictionary<string, int>? UnreadByCategory = null, int SnoozedCount = 0,
+        bool? HasMore = null);
 
 
     // Preferensi notifikasi (Fase 4)
@@ -667,6 +668,7 @@ public static partial class NotificationGatewayEndpoints
             "project" => [$"/projects/{g}"],
             "news" => [$"/news/{g}", $"/news?post={g}", $"/news?post={g}&%"],
             "note" => [$"/notes/{g}", $"/notes/{g}?%", $"/notes/{g}#%"],
+            "ticket" or "tickets" => [$"/tickets/{g}", $"/tickets/{g}?%", $"/tickets/{g}#%"],
             _ => [],
         };
     }

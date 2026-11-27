@@ -78,7 +78,9 @@ public class PhoneTicketsTests
         ctx.Services.AddSingleton(auth); ctx.Services.AddSingleton(http);
         ctx.Services.AddSingleton<TicketApi>(); ctx.Services.AddSingleton<PageCache>();
         ctx.Services.AddSingleton<BadgeState>(); ctx.Services.AddSingleton<PeopleLinks>(); ctx.Services.AddSingleton<CalendarLinks>();
-        ctx.Services.AddSingleton<ToastService>(); ctx.Services.AddSingleton<ConfirmService>(); ctx.Services.AddSingleton<OverlayStack>();
+        var toasts = new ToastService();
+        ctx.Services.AddSingleton(toasts); ctx.Services.AddSingleton<ConfirmService>(); ctx.Services.AddSingleton<OverlayStack>();
+        ctx.Services.AddSingleton(new NotificationState(auth, http, toasts, ctx.JSInterop.JSRuntime));
         var state = new PhoneState(ctx.JSInterop.JSRuntime); state.OnPhoneChanged(phone); ctx.Services.AddSingleton(state);
         return ctx;
     }

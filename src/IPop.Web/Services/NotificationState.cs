@@ -67,6 +67,8 @@ public class NotificationState : IDisposable
 
     public event Action? UnreadChanged;
     public event Action? NotificationsChanged;
+    /// Raised when an inbox resync completes without changing UnreadCount, so /notifications still refreshes.
+    public event Action? InboxSynced;
     public event Action? BannersChanged;
     /// Di-raise setiap LoadPreferencesAsync selesai — komponen shell (MainLayout)
     /// memuat ulang preferensi lokal (badge) tanpa menunggu remount.
@@ -162,7 +164,9 @@ public class NotificationState : IDisposable
                         item.Priority ?? "normal",
                         item.TargetUrl));
                 }
+                var prevUnread = UnreadCount;
                 SetUnread(res.UnreadCount);
+                if (UnreadCount == prevUnread) InboxSynced?.Invoke();
             }
         }
         catch

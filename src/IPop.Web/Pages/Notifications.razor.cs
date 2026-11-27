@@ -23,6 +23,8 @@ public partial class Notifications
     private bool loadingMore;
     private string categoryFilter = "all";
     private bool selecting;
+    private bool actionBusy;
+    private bool suppressPrefsReload;
     private bool snoozeMenuOpen;
     private (double X, double Y)? snoozeMenuAt;
     private ContextMenu? snoozeMenu;
@@ -283,7 +285,9 @@ public partial class Notifications
 
     public void Dispose()
     {
-        Notifs.UnreadChanged -= OnLiveUnreadChanged;
+        Notifs.UnreadChanged -= OnLiveInboxChanged;
+        Notifs.InboxSynced -= OnLiveInboxChanged;
+        Notifs.PreferencesChanged -= OnLivePreferencesChanged;
         if (mDetail) _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { });
         mRef?.Dispose();
         searchCts?.Cancel();
