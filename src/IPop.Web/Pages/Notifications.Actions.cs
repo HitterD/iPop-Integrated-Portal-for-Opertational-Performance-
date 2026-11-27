@@ -25,6 +25,13 @@ public partial class Notifications
         catch { }
     }
 
+    private async Task SyncLivePreferencesAsync()
+    {
+        suppressPrefsReload = true;
+        try { await Notifs.LoadPreferencesAsync(); }
+        finally { suppressPrefsReload = false; }
+    }
+
     // ---- Select mode (Mail-style "Select" → tap rows → act on the footer) ----
     private bool AllSelected => FilteredList.Count > 0 && FilteredList.All(x => selectedIds.Contains(x.Id));
 
@@ -143,6 +150,8 @@ public partial class Notifications
     /// Keeps the person's own quiet hours, days and "allow important"; turns them on with 22:00–07:00 only the first time.
     private async Task ToggleDnd()
     {
+        if (actionBusy) return;
+        actionBusy = true;
         quietHoursEnabled = !quietHoursEnabled;
         try
         {
@@ -155,28 +164,46 @@ public partial class Notifications
                 allowImportant,
                 mutedTypes = string.Join(',', mutedCategories)
             });
-            if (!res.IsSuccessStatusCode) { quietHoursEnabled = !quietHoursEnabled; Toasts.Show("Couldn’t change Do Not Disturb.", ToastKind.Error); return; }
+            if (!res.IsSuccessStatusCode)
+            {
+                quietHoursEnabled = !quietHoursEnabled;
+                Toasts.Show("Couldn’t change Do Not Disturb.", ToastKind.Error);
+                return;
+            }
             Toasts.ShowDetailed("Do Not Disturb", quietHoursEnabled ? $"On from {quietStart} to {quietEnd}. Notifications still collect here." : "Off", ToastKind.Success, "moon");
-            await Notifs.LoadPreferencesAsync();
+            await SyncLivePreferencesAsync();
         }
-        catch { quietHoursEnabled = !quietHoursEnabled; }
+        catch
+        {
+            quietHoursEnabled = !quietHoursEnabled;
+            Toasts.Show("Couldn’t change Do Not Disturb.", ToastKind.Error);
+        }
+        finally { actionBusy = false; }
     }
 
     private async Task ToggleMuteCategory(string type)
     {
+        if (actionBusy) return;
+        actionBusy = true;
         var next = !mutedCategories.Contains(type);
         try
         {
             var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/preferences/mute-type", new { type, muted = next });
-            if (res.IsSuccessStatusCode)
+            if (!res.IsSuccessStatusCode)
             {
-                if (next) mutedCategories.Add(type);
-                else mutedCategories.Remove(type);
-                Toasts.ShowDetailed(next ? "Muted" : "Unmuted", next ? $"{CategoryName(type)} won’t pop up or play sounds. They still collect here." : $"{CategoryName(type)} notifications are back on.", ToastKind.Success, next ? "bell-off" : "bell");
-                await Notifs.LoadPreferencesAsync();
+                Toasts.Show("Couldn’t update category preference.", ToastKind.Error);
+                return;
             }
+            if (next) mutedCategories.Add(type);
+            else mutedCategories.Remove(type);
+            Toasts.ShowDetailed(next ? "Muted" : "Unmuted", next ? $"{CategoryName(type)} won’t pop up or play sounds. They still collect here." : $"{CategoryName(type)} notifications are back on.", ToastKind.Success, next ? "bell-off" : "bell");
+            await SyncLivePreferencesAsync();
         }
-        catch { }
+        catch
+        {
+            Toasts.Show("Couldn’t update category preference.", ToastKind.Error);
+        }
+        finally { actionBusy = false; }
     }
 
     private async Task OnSearchChanged()
@@ -189,21 +216,15 @@ public partial class Notifications
         catch (OperationCanceledException) { return; }
         selectedItem = null;
         detail = null;
+        selectedIds.Clear();
         await ReloadAsync();
         StateHasChanged();
     }
 
-    private async Task Snooze(double hours)
+    private Task Snooze(double hours)
     {
-        if (selectedItem is null) return;
-        var until = DateTime.UtcNow.AddHours(hours);
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{selectedItem.Id}/snooze", new { until });
-        if (res.IsSuccessStatusCode)
-        {
-            selectedItem.SnoozedUntil = until;
-            Toasts.ShowDetailed("Snoozed", hours == 1 ? "It’ll come back in an hour" : $"It’ll come back in {hours} hours", ToastKind.Success, "alarm-clock");
-            await ReloadAsync();
-        }
+        var label = hours == 1 ? "It’ll come back in an hour" : $"It’ll come back in {hours} hours";
+        return SnoozeUntilTime(DateTime.UtcNow.AddHours(hours), label, rawDetail: true);
     }
 
     private async Task SnoozeTonight()
@@ -227,68 +248,114 @@ public partial class Notifications
         await SnoozeUntilTime(target.ToUniversalTime(), "next Monday at 08:00");
     }
 
-    private async Task SnoozeUntilTime(DateTime utc, string label)
+    private async Task SnoozeUntilTime(DateTime utc, string label, bool rawDetail = false)
     {
-        if (selectedItem is null) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{selectedItem.Id}/snooze", new { until = utc });
-        if (res.IsSuccessStatusCode)
+        var item = selectedItem;
+        if (item is null || actionBusy) return;
+        actionBusy = true;
+        try
         {
-            selectedItem.SnoozedUntil = utc;
-            Toasts.ShowDetailed("Snoozed", $"It’ll come back {label}", ToastKind.Success, "alarm-clock");
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{item.Id}/snooze", new { until = utc });
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show("Couldn’t snooze notification.", ToastKind.Error);
+                return;
+            }
+            item.SnoozedUntil = utc;
+            Toasts.ShowDetailed("Snoozed", rawDetail ? label : $"It’ll come back {label}", ToastKind.Success, "alarm-clock");
             await ReloadAsync();
         }
+        catch
+        {
+            Toasts.Show("Couldn’t snooze notification.", ToastKind.Error);
+        }
+        finally { actionBusy = false; }
     }
 
     private async Task UnsnoozeSelected()
     {
-        if (selectedItem is null) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{selectedItem.Id}/unsnooze", new { });
-        if (res.IsSuccessStatusCode)
+        var item = selectedItem;
+        if (item is null || actionBusy) return;
+        actionBusy = true;
+        try
         {
-            selectedItem.SnoozedUntil = null;
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{item.Id}/unsnooze", new { });
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show("Couldn’t unsnooze notification.", ToastKind.Error);
+                return;
+            }
+            item.SnoozedUntil = null;
             Toasts.ShowDetailed("Unsnoozed", "Moved back to your notifications", ToastKind.Success, "check");
             await ReloadAsync();
         }
+        catch
+        {
+            Toasts.Show("Couldn’t unsnooze notification.", ToastKind.Error);
+        }
+        finally { actionBusy = false; }
     }
 
-    private async Task DeleteItem(NotificationItemDto n)
+    private async Task<bool> DeleteItem(NotificationItemDto n)
     {
-        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notifications/v1/notifications/{n.Id}", null);
-        if (res.IsSuccessStatusCode)
+        if (actionBusy) return false;
+        actionBusy = true;
+        try
         {
+            var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notifications/v1/notifications/{n.Id}", null);
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show("Could not delete notification.", ToastKind.Error);
+                return false;
+            }
             await LeaveRowsAsync([n.Id]);
             items.RemoveAll(x => x.Id == n.Id);
             selectedIds.Remove(n.Id);
             if (selectedItem?.Id == n.Id) { selectedItem = null; detail = null; }
             Toasts.Show("Notification deleted.", ToastKind.Success);
             await ReloadAsync(keepPages: true);
+            return true;
         }
-        else
+        catch
         {
             Toasts.Show("Could not delete notification.", ToastKind.Error);
+            return false;
         }
+        finally { actionBusy = false; }
     }
 
     private async Task DeleteSelected()
     {
         if (selectedItem is null) return;
-        await DeleteItem(selectedItem);
-        await BackToList();
+        if (await DeleteItem(selectedItem))
+            await BackToList();
     }
 
     private async Task BulkDelete()
     {
-        if (selectedIds.Count == 0) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/notifications/bulk-delete", new { requestIds = selectedIds.ToList() });
-        if (res.IsSuccessStatusCode)
+        if (selectedIds.Count == 0 || actionBusy) return;
+        actionBusy = true;
+        try
         {
-            await LeaveRowsAsync(selectedIds.ToList());
+            var ids = selectedIds.ToList();
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/notifications/bulk-delete", new { requestIds = ids });
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show("Couldn’t delete selected notifications.", ToastKind.Error);
+                return;
+            }
+            await LeaveRowsAsync(ids);
             items.RemoveAll(x => selectedIds.Contains(x.Id));
             if (selectedItem is not null && selectedIds.Contains(selectedItem.Id)) { selectedItem = null; detail = null; }
             EndSelecting();
             Toasts.Show("Notifications deleted.", ToastKind.Success);
             await ReloadAsync(keepPages: true);
         }
+        catch
+        {
+            Toasts.Show("Couldn’t delete selected notifications.", ToastKind.Error);
+        }
+        finally { actionBusy = false; }
     }
 
     private async Task MuteType(string category) => await ToggleMuteCategory(category);

@@ -17,15 +17,27 @@ public partial class Notifications
         Layout?.SetHeader("Notifications", "Notification center");
         await LoadPreferences();
         await ReloadAsync();
-        Notifs.UnreadChanged += OnLiveUnreadChanged;
+        Notifs.UnreadChanged += OnLiveInboxChanged;
+        Notifs.InboxSynced += OnLiveInboxChanged;
+        Notifs.PreferencesChanged += OnLivePreferencesChanged;
     }
 
-    private void OnLiveUnreadChanged()
+    private void OnLiveInboxChanged()
     {
         if (suppressLiveReload) return;
         _ = InvokeAsync(async () =>
         {
             await LiveRefreshAsync();
+            StateHasChanged();
+        });
+    }
+
+    private void OnLivePreferencesChanged()
+    {
+        if (suppressPrefsReload) return;
+        _ = InvokeAsync(async () =>
+        {
+            await LoadPreferences();
             StateHasChanged();
         });
     }
@@ -37,37 +49,76 @@ public partial class Notifications
         finally { suppressLiveReload = false; }
     }
 
-    private string InboxUrl(int page, int size)
+    private string InboxUrl(int page, int size, DateTime? beforeAt = null, Guid? beforeId = null)
     {
         var url = $"/api/notifications/v1/inbox?page={page}&pageSize={size}";
         if (categoryFilter == "snoozed") url += "&status=snoozed";
         else if (categoryFilter == "unread") url += "&status=unread";
         else if (categoryFilter != "all") url += $"&category={categoryFilter}";
         if (!string.IsNullOrWhiteSpace(searchQuery)) url += "&q=" + Uri.EscapeDataString(searchQuery.Trim());
+        if (beforeAt is { } at) url += "&beforeAt=" + Uri.EscapeDataString(at.ToUniversalTime().ToString("O"));
+        if (beforeId is { } bid) url += "&beforeId=" + bid.ToString("D");
         return url;
     }
 
     private Task ReloadAsync() => ReloadAsync(keepPages: false);
 
+    private async Task<(InboxResultDto First, List<NotificationItemDto> Items, bool HasMore)?> FetchUpToAsync(
+        int targetCount, string filterAtStart, string searchAtStart)
+    {
+        const int maxServerPageSize = 100;
+        var fetched = new List<NotificationItemDto>(targetCount);
+        var seen = new HashSet<Guid>();
+        InboxResultDto? first = null;
+        InboxResultDto? lastRes = null;
+
+        while (fetched.Count < targetCount)
+        {
+            var chunkSize = Math.Min(maxServerPageSize, targetCount - fetched.Count);
+            var cursor = fetched.Count > 0 ? fetched[^1] : null;
+            var res = await Auth.GetAsync<InboxResultDto>(
+                cursor is null ? InboxUrl(1, chunkSize) : InboxUrl(1, chunkSize, cursor.AtUtc, cursor.Id));
+            if (res is null || categoryFilter != filterAtStart || searchQuery != searchAtStart)
+                return null;
+
+            first ??= res;
+            lastRes = res;
+            var batch = res.Items.Select(ToItem).ToList();
+            var added = 0;
+            foreach (var item in batch)
+            {
+                if (seen.Add(item.Id)) { fetched.Add(item); added++; }
+            }
+
+            var chunkMore = res.HasMore ?? (res.TotalCount > fetched.Count && added > 0);
+            if (!chunkMore || batch.Count < chunkSize || added == 0)
+                return (first, fetched, chunkMore);
+        }
+
+        var more = lastRes!.HasMore ?? (lastRes.TotalCount > fetched.Count);
+        return (first!, fetched, more);
+    }
+
     /// <summary>
     /// Full / explicit inbox reload (initial load, refresh button, category/search change, delete/snooze).
-    /// keepPages keeps as many rows as are on screen (up to the server's 100).
+    /// keepPages preserves all pages currently loaded (beyond the server's 100-per-request cap).
     /// </summary>
     private async Task ReloadAsync(bool keepPages)
     {
         var seq = ++reloadSeq;
+        var filterAtStart = categoryFilter;
+        var searchAtStart = searchQuery;
         isLoading = true;
         try
         {
-            var size = keepPages ? Math.Clamp(items.Count, PageSize, 100) : PageSize;
-            var res = await Auth.GetAsync<InboxResultDto>(InboxUrl(1, size));
-            if (res is not null && seq == reloadSeq)
+            var target = keepPages ? Math.Max(PageSize, items.Count) : PageSize;
+            var fetched = await FetchUpToAsync(target, filterAtStart, searchAtStart);
+            if (fetched is { } f && seq == reloadSeq)
             {
-                var fresh = res.Items.Select(ToItem).ToList();
-                ApplyCounts(res, fresh);
-                items = fresh;
-                loadedPage = Math.Max(1, size / PageSize);
-                hasMore = res.TotalCount > items.Count;
+                ApplyCounts(f.First, f.Items);
+                items = f.Items;
+                loadedPage = Math.Max(1, (int)Math.Ceiling(items.Count / (double)PageSize));
+                hasMore = f.HasMore;
                 SetShellUnread(unreadCount);
 
                 if (selectedItem is null && !showPrefs && !Phone.IsPhone)
@@ -103,16 +154,15 @@ public partial class Notifications
         var searchAtStart = searchQuery;
         try
         {
-            var size = Math.Clamp(items.Count, PageSize, 100);
-            var res = await Auth.GetAsync<InboxResultDto>(InboxUrl(1, size));
-            if (res is null || seq != reloadSeq || categoryFilter != filterAtStart || searchQuery != searchAtStart)
+            var target = Math.Max(PageSize, items.Count);
+            var fetched = await FetchUpToAsync(target, filterAtStart, searchAtStart);
+            if (fetched is not { } f || seq != reloadSeq)
                 return;
 
-            var fresh = res.Items.Select(ToItem).ToList();
-            ApplyCounts(res, fresh);
-            items = MergeLiveItems(items, fresh, categoryFilter, selectedItem?.Id);
-            loadedPage = Math.Max(1, size / PageSize);
-            hasMore = res.TotalCount > fresh.Count;
+            ApplyCounts(f.First, f.Items);
+            items = MergeLiveItems(items, f.Items, categoryFilter, selectedItem?.Id, f.HasMore);
+            loadedPage = Math.Max(1, (int)Math.Ceiling(items.Count / (double)PageSize));
+            hasMore = f.HasMore;
 
             if (selectedItem is not null)
             {
@@ -137,13 +187,15 @@ public partial class Notifications
         List<NotificationItemDto> current,
         List<NotificationItemDto> fresh,
         string categoryFilter,
-        Guid? selectedId)
+        Guid? selectedId,
+        bool hasMoreFromServer = false)
     {
         var freshById = new Dictionary<Guid, NotificationItemDto>(fresh.Count);
         foreach (var f in fresh) freshById.TryAdd(f.Id, f);
 
         var merged = new List<NotificationItemDto>(current.Count + fresh.Count);
         var seen = new HashSet<Guid>(current.Count + fresh.Count);
+        var tailAt = hasMoreFromServer && fresh.Count > 0 ? fresh[^1].At : (DateTime?)null;
 
         foreach (var existing in current)
         {
@@ -160,6 +212,11 @@ public partial class Notifications
             else if (selectedId is { } sid && existing.Id == sid)
             {
                 if (categoryFilter == "unread") existing.IsRead = true;
+                merged.Add(existing);
+                seen.Add(existing.Id);
+            }
+            else if (tailAt is { } cut && existing.At < cut)
+            {
                 merged.Add(existing);
                 seen.Add(existing.Id);
             }
@@ -182,18 +239,29 @@ public partial class Notifications
         loadingMore = true;
         try
         {
-            var res = await Auth.GetAsync<InboxResultDto>(InboxUrl(loadedPage + 1, PageSize));
+            var cursor = items.Count > 0 ? items[^1] : null;
+            var url = cursor is null
+                ? InboxUrl(loadedPage + 1, PageSize)
+                : InboxUrl(1, PageSize, cursor.AtUtc, cursor.Id);
+            var res = await Auth.GetAsync<InboxResultDto>(url);
             if (res is not null)
             {
                 var fresh = res.Items.Select(ToItem).ToList();
                 var seen = items.Select(i => i.Id).ToHashSet();
                 ApplyCounts(res, fresh);
-                items.AddRange(fresh.Where(i => seen.Add(i.Id)));
+                var added = 0;
+                foreach (var item in fresh)
+                {
+                    if (seen.Add(item.Id)) { items.Add(item); added++; }
+                }
                 loadedPage++;
-                hasMore = res.TotalCount > items.Count && res.Items.Count > 0;
+                hasMore = res.HasMore ?? (res.TotalCount > items.Count && added > 0);
             }
         }
-        catch { }
+        catch
+        {
+            Toasts.Show("Couldn’t load older notifications.", ToastKind.Error);
+        }
         finally { loadingMore = false; }
     }
 
@@ -220,15 +288,20 @@ public partial class Notifications
         Layout?.SetSubtitle(unreadCount == 0 ? "All caught up" : $"{unreadCount} unread");
     }
 
-    private static NotificationItemDto ToItem(InboxItemResultDto i) => new(
-        i.Id, i.Type, i.Title, i.Body, i.Source,
-        i.At.Kind == DateTimeKind.Utc ? i.At.ToLocalTime() : i.At,
-        i.IsRead, i.Priority, i.TargetUrl, i.SnoozedUntil)
+    private static NotificationItemDto ToItem(InboxItemResultDto i)
     {
-        EventType = i.EventType ?? i.Type,
-        Category = i.Category ?? "system",
-        ActorName = i.ActorName,
-    };
+        var utc = i.At.Kind == DateTimeKind.Local ? i.At.ToUniversalTime() : DateTime.SpecifyKind(i.At, DateTimeKind.Utc);
+        return new(
+            i.Id, i.Type, i.Title, i.Body, i.Source,
+            utc.ToLocalTime(),
+            i.IsRead, i.Priority, i.TargetUrl, i.SnoozedUntil)
+        {
+            AtUtc = utc,
+            EventType = i.EventType ?? i.Type,
+            Category = i.Category ?? "system",
+            ActorName = i.ActorName,
+        };
+    }
 
     private int CountCategory(string catId) => catId switch
     {
@@ -261,6 +334,15 @@ public partial class Notifications
         }
     }
 
+    private void RevertOptimisticRead(NotificationItemDto item)
+    {
+        item.IsRead = false;
+        unreadCount++;
+        unreadByCategory[item.Category] = unreadByCategory.GetValueOrDefault(item.Category) + 1;
+        SetShellUnread(unreadCount);
+        Layout?.SetSubtitle(unreadCount == 0 ? "All caught up" : $"{unreadCount} unread");
+    }
+
     private async Task MarkReadAsync(Guid id)
     {
         var item = items.FirstOrDefault(x => x.Id == id);
@@ -278,15 +360,12 @@ public partial class Notifications
         {
             var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{id}/read", new { });
             if (!res.IsSuccessStatusCode)
-            {
-                item.IsRead = false;
-                unreadCount++;
-                unreadByCategory[item.Category] = unreadByCategory.GetValueOrDefault(item.Category) + 1;
-                SetShellUnread(unreadCount);
-                Layout?.SetSubtitle(unreadCount == 0 ? "All caught up" : $"{unreadCount} unread");
-            }
+                RevertOptimisticRead(item);
         }
-        catch { }
+        catch
+        {
+            RevertOptimisticRead(item);
+        }
         finally
         {
             pendingReadIds.Remove(id);
@@ -296,11 +375,17 @@ public partial class Notifications
 
     private async Task BulkMarkRead()
     {
-        if (selectedIds.Count == 0) return;
-        var ids = selectedIds.ToList();
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/notifications/bulk-read", new { requestIds = ids });
-        if (res.IsSuccessStatusCode)
+        if (selectedIds.Count == 0 || actionBusy) return;
+        actionBusy = true;
+        try
         {
+            var ids = selectedIds.ToList();
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/notifications/bulk-read", new { requestIds = ids });
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show("Couldn’t mark notifications as read.", ToastKind.Error);
+                return;
+            }
             if (categoryFilter == "unread") await LeaveRowsAsync(ids);
             foreach (var item in items.Where(x => selectedIds.Contains(x.Id))) item.IsRead = true;
             if (categoryFilter == "unread" && selectedItem is not null && selectedIds.Contains(selectedItem.Id))
@@ -312,25 +397,39 @@ public partial class Notifications
             Toasts.Show("Notifications marked as read.", ToastKind.Success);
             await ReloadAsync(keepPages: true);
         }
+        catch
+        {
+            Toasts.Show("Couldn’t mark notifications as read.", ToastKind.Error);
+        }
+        finally { actionBusy = false; }
     }
 
     private async Task ToggleReadStatus(NotificationItemDto n)
     {
-        if (n.IsRead)
+        if (actionBusy) return;
+        actionBusy = true;
+        try
         {
-            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{n.Id}/unread", new { });
-            if (res.IsSuccessStatusCode)
+            if (n.IsRead)
             {
+                var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{n.Id}/unread", new { });
+                if (!res.IsSuccessStatusCode)
+                {
+                    Toasts.Show("Couldn’t update notification status.", ToastKind.Error);
+                    return;
+                }
                 n.IsRead = false;
                 unreadCount++;
                 unreadByCategory[n.Category] = unreadByCategory.GetValueOrDefault(n.Category) + 1;
             }
-        }
-        else
-        {
-            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{n.Id}/read", new { });
-            if (res.IsSuccessStatusCode)
+            else
             {
+                var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{n.Id}/read", new { });
+                if (!res.IsSuccessStatusCode)
+                {
+                    Toasts.Show("Couldn’t update notification status.", ToastKind.Error);
+                    return;
+                }
                 var keepInUnread = categoryFilter == "unread" && selectedItem?.Id == n.Id;
                 if (categoryFilter == "unread" && !keepInUnread)
                 {
@@ -341,10 +440,15 @@ public partial class Notifications
                 if (unreadCount > 0) unreadCount--;
                 if (unreadByCategory.TryGetValue(n.Category, out var c) && c > 0) unreadByCategory[n.Category] = c - 1;
             }
+            SetShellUnread(unreadCount);
+            Layout?.SetSubtitle(unreadCount == 0 ? "All caught up" : $"{unreadCount} unread");
+            StateHasChanged();
         }
-        SetShellUnread(unreadCount);
-        Layout?.SetSubtitle(unreadCount == 0 ? "All caught up" : $"{unreadCount} unread");
-        StateHasChanged();
+        catch
+        {
+            Toasts.Show("Couldn’t update notification status.", ToastKind.Error);
+        }
+        finally { actionBusy = false; }
     }
 
     private async Task ToggleReadSelected()
@@ -355,24 +459,38 @@ public partial class Notifications
 
     private async Task MarkAllRead()
     {
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/inbox/read-all", new { });
-        if (!res.IsSuccessStatusCode) return;
-        if (categoryFilter == "unread")
+        if (actionBusy) return;
+        actionBusy = true;
+        try
         {
-            await LeaveRowsAsync(items.Select(i => i.Id).ToList());
-            items.Clear();
-            selectedItem = null;
-            detail = null;
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/inbox/read-all", new { });
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show("Couldn’t mark all notifications as read.", ToastKind.Error);
+                return;
+            }
+            if (categoryFilter == "unread")
+            {
+                await LeaveRowsAsync(items.Select(i => i.Id).ToList());
+                items.Clear();
+                selectedItem = null;
+                detail = null;
+            }
+            else if (categoryFilter != "snoozed")
+            {
+                foreach (var i in items.Where(x => !IsSnoozed(x))) i.IsRead = true;
+            }
+            unreadCount = 0;
+            unreadByCategory.Clear();
+            SetShellUnread(0);
+            Layout?.SetSubtitle("All caught up");
+            Toasts.ShowDetailed("All Read", "All notifications marked as read", ToastKind.Success, "check-check");
         }
-        else
+        catch
         {
-            foreach (var i in items) i.IsRead = true;
+            Toasts.Show("Couldn’t mark all notifications as read.", ToastKind.Error);
         }
-        unreadCount = 0;
-        unreadByCategory.Clear();
-        SetShellUnread(0);
-        Layout?.SetSubtitle("All caught up");
-        Toasts.ShowDetailed("All Read", "All notifications marked as read", ToastKind.Success, "check-check");
+        finally { actionBusy = false; }
     }
 
     internal sealed class NotificationItemDto
@@ -383,6 +501,7 @@ public partial class Notifications
         public string Body { get; set; }
         public string? Source { get; set; }
         public DateTime At { get; set; }
+        public DateTime AtUtc { get; set; }
         public bool IsRead { get; set; }
         public string Priority { get; set; }
         public string? TargetUrl { get; set; }
@@ -393,12 +512,14 @@ public partial class Notifications
 
         public NotificationItemDto(Guid id, string type, string title, string body, string? source, DateTime at, bool isRead, string priority, string? targetUrl, DateTime? snoozedUntil)
         {
-            Id = id; Type = type; Title = title; Body = body; Source = source; At = at; IsRead = isRead; Priority = priority; TargetUrl = targetUrl; SnoozedUntil = snoozedUntil;
+            Id = id; Type = type; Title = title; Body = body; Source = source; At = at;
+            AtUtc = at.Kind == DateTimeKind.Utc ? at : at.ToUniversalTime();
+            IsRead = isRead; Priority = priority; TargetUrl = targetUrl; SnoozedUntil = snoozedUntil;
         }
     }
 
     private record InboxResultDto(List<InboxItemResultDto> Items, int TotalCount, int UnreadCount,
-        Dictionary<string, int>? UnreadByCategory = null, int SnoozedCount = 0);
+        Dictionary<string, int>? UnreadByCategory = null, int SnoozedCount = 0, bool? HasMore = null);
     private record InboxItemResultDto(Guid Id, string Type, string Title, string Body, string Source, DateTime At, bool IsRead, string Priority,
         string? TargetUrl, DateTime? SnoozedUntil = null, string? ActorName = null, string? EventType = null, string? Category = null);
 }
