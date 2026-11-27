@@ -71,6 +71,8 @@
 
   const calendarSwipes = new WeakMap();
   ipop.phone = {
+    /** Pure thresholds shared with chat-swipe.js (one source for the 450 ms / 22 % rules). */
+    kit: { longPress, swipeDecision },
     calendarSwipe(element, ref) {
       ipop.phone.calendarSwipeDispose(element);
       let start, active = true;

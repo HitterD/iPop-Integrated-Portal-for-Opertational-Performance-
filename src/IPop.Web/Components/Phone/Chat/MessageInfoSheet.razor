@@ -1,0 +1,91 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ChatState ChatSvc
+@* Phone (BIGIS 12, mockup png 19): swipe a message left = Message info. Own group messages list
+   Read by (with time) and Not read yet (Delivered / Not delivered), same /seen data as the desktop
+   SeenIndicator popover. Other people's messages only show who sent it and when: read lists are
+   for the sender (the same rule as the desktop "Seen by"). *@
+<BottomSheet Open="Message is not null" OpenChanged="Changed" Label="Message info" Class="m-msg-info">
+    @if (Message is { } m)
+    {
+        <h2 class="msi-title">Message info</h2>
+        <div class="msi-sub">@SubLine(m)</div>
+        @if (!string.IsNullOrWhiteSpace(Preview))
+        {
+            <div class="m-chat-lift @(Own ? "out" : "in")">@Preview</div>
+        }
+        @if (!Own || !IsGroup)
+        {
+            <div class="msi-note">@(Own ? DmStatus(m) : $"Sent by {IPop.Application.PersonName.Display(m.SenderName)}. Read receipts are only shown to the sender.")</div>
+        }
+        else if (loading && readers.Count == 0) { <div class="msi-note">Loading…</div> }
+        else if (error is not null) { <div class="msi-note">@error</div> }
+        else
+        {
+            <div class="msi-sec"><i data-lucide="check-check"></i> Read by <b>@readers.Count</b></div>
+            @foreach (var r in readers) { @Row(r, r.ReadAt?.ToLocalTime().ToString("HH:mm")) }
+            @if (pending.Count > 0)
+            {
+                <div class="msi-sec"><i data-lucide="check"></i> Not read yet <b>@pending.Count</b></div>
+                @foreach (var r in pending) { @Row(r, r.DeliveredAt is not null ? "Delivered" : "Not delivered") }
+            }
+        }
+    }
+</BottomSheet>
+
+@code {
+    [Parameter] public MessageDto? Message { get; set; }
+    [Parameter] public bool Own { get; set; }
+    [Parameter] public bool IsGroup { get; set; }
+    [Parameter] public string? Preview { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private List<SeenByDto> readers = [], pending = [];
+    private bool loading;
+    private string? error;
+    private Guid? loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Message is null) { loadedFor = null; return; }
+        if (!Own || !IsGroup || loadedFor == Message.Id) return;
+        loadedFor = Message.Id;
+        readers = []; pending = []; error = null; loading = true;
+        try
+        {
+            var d = await Auth.GetAsync<SeenListDto>($"/api/chat/messages/{Message.Id}/seen");
+            readers = d?.Readers.ToList() ?? [];
+            pending = d?.Pending?.ToList() ?? [];
+        }
+        catch { error = "Couldn't load who has read this."; }
+        finally { loading = false; }
+    }
+
+    private Task Changed(bool open) => open ? Task.CompletedTask : OnClose.InvokeAsync();
+
+    private string SubLine(MessageDto m)
+    {
+        var sent = "Sent " + m.CreatedAt.ToLocalTime().ToString("HH:mm");
+        return Own && IsGroup && m.ReadCount is { } rc && m.ReadTotal is { } rt ? $"{sent} · Seen by {rc} of {rt}" : sent;
+    }
+
+    private static string DmStatus(MessageDto m) => m.DeliveryStatus switch
+    {
+        "read" => "Read",
+        "delivered" => "Delivered, not read yet",
+        _ => "Sent",
+    };
+
+    // SeenByDto has no NIK; the room's member list maps the id to one for the photo.
+    private string? NikOf(Guid userId) => ChatSvc.ActiveRoom?.Members.FirstOrDefault(x => x.UserId == userId)?.Nik;
+
+    private RenderFragment Row(SeenByDto r, string? meta) => __builder =>
+    {
+        <div class="msi-row">
+            <PersonAvatar Nik="@NikOf(r.UserId)" Name="@r.UserName" Size="32" Decorative="true" />
+            <span class="n">@IPop.Application.PersonName.Display(r.UserName)</span>
+            @if (meta is not null) { <time>@meta</time> }
+        </div>
+    };
+}
