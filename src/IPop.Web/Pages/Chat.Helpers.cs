@@ -224,6 +224,7 @@ public partial class Chat
     // ---- Scroll position ----
 
     private bool showJumpToLatest;
+    private IPop.Web.Components.Chat.JumpToLatestButton? jumpButton;
     private string? scrollWatchBoundId;
     /// Messages from others that arrived while the reader was scrolled up; shown on the pill.
     private int newBelowCount;
@@ -239,7 +240,9 @@ public partial class Chat
         if (awayFromBottom == showJumpToLatest && count == newBelowCount) return;
         showJumpToLatest = awayFromBottom;
         newBelowCount = count;
-        _ = InvokeAsync(StateHasChanged);
+        // Only the button changes: re-rendering the whole page here cost ~60 ms per crossing.
+        if (jumpButton is not null) _ = InvokeAsync(() => jumpButton.Set(showJumpToLatest, newBelowCount));
+        else _ = InvokeAsync(StateHasChanged);
     }
 
     /// Scrolled near the top of the loaded history: fetch the previous page.

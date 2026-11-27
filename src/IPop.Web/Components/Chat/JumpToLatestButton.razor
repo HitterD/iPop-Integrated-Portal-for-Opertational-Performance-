@@ -1,0 +1,28 @@
+@* "Jump to latest" over the message list. Its own component so the scroll watcher can show/hide it
+   without re-rendering the whole Chat page (~400 bubbles, ~60 ms a time). Always in the DOM and
+   hidden by class: inserting a sibling of a long list restyles all of it. *@
+<button type="button" class="jump-latest @(NewCount > 0 ? "has-new" : Away ? "" : "jl-off")"
+        title="Jump to latest" aria-label="@(NewCount > 0 ? null : "Jump to latest")"
+        aria-hidden="@(Visible ? null : "true")" tabindex="@(Visible ? null : "-1")" @onclick="OnJump">
+    <i data-lucide="arrow-down"></i>@(NewCount > 0 ? (NewCount == 1 ? "1 new message" : $"{NewCount} new messages") : null)
+</button>
+
+@code {
+    /// Scrolled far enough from the bottom to offer the button.
+    [Parameter] public bool Away { get; set; }
+    /// Messages from others that arrived below while scrolled up; turns the button into a pill.
+    [Parameter] public int NewCount { get; set; }
+    [Parameter] public EventCallback OnJump { get; set; }
+
+    private bool Visible => NewCount > 0 || Away;
+
+    /// Update from a scroll event without a parent render. The parent keeps the same values in
+    /// its own fields, so its next render passes these back unchanged.
+    public void Set(bool away, int newCount)
+    {
+        if (away == Away && newCount == NewCount) return;
+        Away = away;
+        NewCount = newCount;
+        StateHasChanged();
+    }
+}
