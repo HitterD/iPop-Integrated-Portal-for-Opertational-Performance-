@@ -133,6 +133,9 @@ public class HtmlWindow : Form
         }
         catch (Exception ex)
         {
+            Log.Error("webview", $"{page} could not start", ex);
+            WebViewFailed?.Invoke(ex);
+            if (IsDisposed) return;
             Controls.Clear();
             Controls.Add(new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Text = "iPop Notifier needs Microsoft Edge WebView2.\n" + ex.Message });
         }
@@ -158,6 +161,10 @@ public class HtmlWindow : Form
     }
 
     protected virtual void OnReady() { }
+
+    /// The page could not be created at all (WebView2 refused): windows without a visible UI (the remote host) end
+    /// their work here instead of waiting for a "ready" that never comes.
+    public event Action<Exception>? WebViewFailed;
 
     protected virtual void HandleMessage(string type, JsonNode? msg)
     {
@@ -297,6 +304,9 @@ public static class AppIcon
             return remote;
         }
     }
+
+    /// False for the shared icons (the app icon and the remote-help ring), which live for the whole app.
+    public static bool IsDisposable(Icon i) => !ReferenceEquals(i, icon) && !ReferenceEquals(i, remote);
 
     /// Tray icon with a small red dot when there is something unread.
     public static Icon Tray(bool unread)

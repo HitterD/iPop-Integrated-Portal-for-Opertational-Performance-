@@ -45,48 +45,37 @@
   R.rejoin = async (info, screen) => {
     const old = R.room; R.room = null; R.screenPub = null;
     try { await old?.disconnect(); } catch { }
-    try { R.desk?.stop(); } catch { }
     return R.join(info, R.preset || 'auto', screen || R.screen);
   };
 
   // ── host: screen ───────────────────────────────────────────────────────
-  // One monitor: getDisplayMedia, answered by the app itself (no picker). Several monitors (1.8.0): the whole desktop
-  // through getUserMedia('screen'), cropped frame by frame to the monitor the helper picked (screen.crop; none = All).
+  // getDisplayMedia, answered by the app itself (no picker): the environment auto-selects the first screen
+  // ("Entire screen" with one monitor, "Screen 1" with several). 1.8.1: the 1.8.0 whole-desktop path
+  // (getUserMedia chromeMediaSource:'screen' + crop) was refused or hung on PCs with two monitors in WebView2 158,
+  // so nobody with two monitors could be helped; it is gone.
   const PRESETS = {
     auto: { maxW: 1920, maxH: 1080, fps: 30, bitrate: 6_000_000, simulcast: true, degrade: 'balanced', hint: 'detail' },
     smooth: { maxW: 1920, maxH: 1080, fps: 60, bitrate: 8_000_000, degrade: 'maintain-framerate', hint: 'motion' },
     quality: { maxW: 2560, maxH: 1440, fps: 30, bitrate: 12_000_000, degrade: 'maintain-resolution', hint: 'detail' },
   };
-  async function capture(p, screen) {
-    if (!screen || !screen.multi) {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
+  const CAPTURE_TIMEOUT_MS = 15000;
+  async function capture(p) {
+    // A capture that never answers (no matching source) must fail, not leave the helper on "Connecting…".
+    let timer;
+    const stream = await Promise.race([
+      navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: p.fps, max: p.fps }, width: { max: p.maxW }, height: { max: p.maxH }, cursor: 'always' }, audio: false,
-      });
-      return stream.getVideoTracks()[0];
-    }
-    const v = screen.virtual;
-    const desk = (await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: {
-      chromeMediaSource: 'screen', minWidth: v.w, maxWidth: v.w, minHeight: v.h, maxHeight: v.h, maxFrameRate: p.fps } } })).getVideoTracks()[0];
-    const c = screen.crop;
-    if (!c) return desk;
-    const gen = new MediaStreamTrackGenerator({ kind: 'video' });
-    const rect = { x: c.x & ~1, y: c.y & ~1, width: c.w & ~1, height: c.h & ~1 };
-    new MediaStreamTrackProcessor({ track: desk }).readable.pipeThrough(new TransformStream({
-      transform(frame, out) {
-        try { out.enqueue(new VideoFrame(frame, { visibleRect: rect })); } catch { }
-        frame.close();
-      },
-    })).pipeTo(gen.writable).catch(() => { });
-    gen.addEventListener('ended', () => desk.stop());
-    R.desk = desk;
-    return gen;
+      }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('The screen capture did not start within 15 s')), CAPTURE_TIMEOUT_MS); }),
+    ]).finally(() => clearTimeout(timer));
+    return stream.getVideoTracks()[0];
   }
-  R.capture = capture; // QA: the capture path alone (multi-monitor crop) without a LiveKit room
+  R.capture = capture; // QA: the capture path alone without a LiveKit room
   R.publishScreen = async (preset, screen) => {
     const p = PRESETS[preset] || PRESETS.auto; R.preset = preset;
     R.screen = screen || R.screen;
-    if (R.screenPub) { await R.room.localParticipant.unpublishTrack(R.screenPub.track); R.screenPub = null; try { R.desk?.stop(); } catch { } }
-    const mst = await capture(p, R.screen);
+    if (R.screenPub) { await R.room.localParticipant.unpublishTrack(R.screenPub.track); R.screenPub = null; }
+    const mst = await capture(p);
     try { mst.contentHint = p.hint; } catch { }
     const track = new LK.LocalVideoTrack(mst, undefined, false);
     R.screenPub = await R.room.localParticipant.publishTrack(track, {
@@ -97,8 +86,7 @@
       degradationPreference: p.degrade,
     });
     const s = mst.getSettings();
-    const c = R.screen?.crop;
-    sendReliable({ t: 'screen', w: c ? c.w : s.width, h: c ? c.h : s.height, fps: s.frameRate, preset });
+    sendReliable({ t: 'screen', w: s.width, h: s.height, fps: s.frameRate, preset });
     return s;
   };
 

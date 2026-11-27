@@ -39,7 +39,7 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         var initials = m["helperInitials"]?.GetValue<string>() ?? "IT";
         mode = m["mode"]?.GetValue<string>() == "view" ? "view" : "control";
         var joining = m["joining"]?.GetValue<bool>() == true;
-        if (m["unattended"]?.GetValue<bool>() == true) { _ = StartAsync(id, initials, unattended: true); return; }
+        if (m["unattended"]?.GetValue<bool>() == true) { _ = StartSafeAsync(id, initials, unattended: true); return; }
         if (sessionId is not null && !joining)
         {
             Log.Warn("remote", $"new request while {sessionId} is still marked here — closing the old one");
@@ -58,15 +58,18 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         {
             answered = true;
             ask.Close();
+            string? status;
             try
             {
                 using var res = await api.SendAsync(HttpMethod.Post, $"api/notifier/remote/sessions/{id}/answer", new { allow, permissions = allowed });
-                var status = JsonNode.Parse(await res.Content.ReadAsStringAsync())?["status"]?.GetValue<string>();
+                status = JsonNode.Parse(await res.Content.ReadAsStringAsync())?["status"]?.GetValue<string>();
                 Log.Info("remote", $"answered allow={allow} perms={string.Join(',', allowed)} → {(int)res.StatusCode} status={status}");
-                if (allow && status == "active" && !joining) await StartAsync(id, initials, unattended: false);
-                else if (allow && status != "active") balloon("Remote help", "The request had already expired.", ToolTipIcon.Info);
             }
-            catch (Exception ex) { Log.Error("remote", "answer failed", ex); balloon("Remote help", "Couldn't reach iPop to answer.", ToolTipIcon.Warning); }
+            catch (Exception ex) { Log.Error("remote", "answer failed", ex); balloon("Remote help", "Couldn't reach iPop to answer.", ToolTipIcon.Warning); return; }
+            // Hotfix 1.8.1: starting the share is no longer inside the answer's try. In 1.8.0 any start error showed
+            // "Couldn't reach iPop to answer" although iPop already had the Allow, and the helper waited forever.
+            if (allow && status == "active" && !joining) await StartSafeAsync(id, initials, unattended: false);
+            else if (allow && status != "active") balloon("Remote help", "The request had already expired.", ToolTipIcon.Info);
         };
         var timer = new System.Windows.Forms.Timer { Interval = seconds * 1000 };
         timer.Tick += (_, _) => { timer.Dispose(); if (!answered && !ask.IsDisposed) { answered = true; ask.Close(); _ = api.SendAsync(HttpMethod.Post, $"api/notifier/remote/sessions/{id}/answer", new { allow = false }); } };
@@ -74,6 +77,23 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         ask.Show();
         Integration.Chime();
     }
+
+    /// Start the session; whatever fails ends it on both sides with a reason (never a silent "Connecting…").
+    private async Task StartSafeAsync(Guid id, string initials, bool unattended)
+    {
+        try { await StartAsync(id, initials, unattended); }
+        catch (Exception ex)
+        {
+            Log.Error("remote", "start failed: " + ex);
+            balloon("Remote help", "Remote help couldn't start on this PC. ICT has been told.", ToolTipIcon.Warning);
+            if (sessionId == id) await EndAsync("error");
+            else { try { using var _ = await api.SendAsync(HttpMethod.Post, $"api/notifier/remote/sessions/{id}/end", new { files = "" }); } catch { } }
+        }
+    }
+
+    /// The hidden page must be sharing within this time, else the session ends instead of hanging.
+    internal static readonly TimeSpan ShareDeadline = TimeSpan.FromSeconds(45);
+    private bool sharing;
 
     private async Task StartAsync(Guid id, string initials, bool unattended)
     {
@@ -112,18 +132,36 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         alive.Tick += async (_, _) => await AliveAsync(id);
         alive.Start();
         _ = Task.Delay(20_000).ContinueWith(_ => Log.UploadAsync(api));
+        sharing = false;
         page = new HostPage(this);
-        page.Ready += () => page.Send(new { type = "join", info = join, quality = "auto", screen = Screen() });
+        page.Ready += () => page?.Send(new { type = "join", info = join, quality = "auto", screen = Screen() });
+        page.WebViewFailed += ex => Post(() =>
+        {
+            if (sessionId != id) return;
+            balloon("Remote help", "Your screen couldn't be shared. ICT has been told.", ToolTipIcon.Warning);
+            _ = EndAsync("error");
+        });
         page.CreateControl();
         _ = page.Handle;
+        // WebView2 can fail to make the hidden page (0x8007139F) or the capture can hang: end with a reason after the
+        // deadline instead of leaving the helper on "Connecting…".
+        _ = Task.Delay(ShareDeadline).ContinueWith(_ => Post(() =>
+        {
+            if (sessionId != id || sharing) return;
+            Log.Warn("remote", $"share did not start within {ShareDeadline.TotalSeconds:0} s");
+            balloon("Remote help", "Your screen couldn't be shared. ICT has been told.", ToolTipIcon.Warning);
+            _ = EndAsync("error");
+        }));
     }
 
-    /// How the host page captures: one monitor → getDisplayMedia; several → the desktop cropped to the chosen one.
-    private object Screen() => new { multi = System.Windows.Forms.Screen.AllScreens.Length > 1, @virtual = Monitors.Virtual(), crop = Monitors.Crop(monitor) };
+    /// What the host page shares: always one whole screen through getDisplayMedia (hotfix 1.8.1).
+    private static object Screen() => new { multi = false };
 
     /// The helper picked another monitor (or All): input, frame and the shared picture follow.
     private void SwitchMonitor(int index)
     {
+        // Hotfix 1.8.1: one fixed screen is shared, so picking another monitor is off until it can really follow.
+        if (!MonitorPicking) { SendMonitors(); return; }
         var count = System.Windows.Forms.Screen.AllScreens.Length;
         if (count < 2 || page is null) return;
         monitor = index == Monitors.All ? Monitors.All : Math.Clamp(index, 0, count - 1);
@@ -136,7 +174,9 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         Log.Info("remote", $"monitor → {monitor} {bounds}");
     }
 
-    private void SendMonitors() => page?.Send(new { type = "send", topic = "ctl", msg = Monitors.Describe(monitor, System.Windows.Forms.Screen.AllScreens.Length > 1) });
+    private static readonly bool MonitorPicking = false;
+
+    private void SendMonitors() => page?.Send(new { type = "send", topic = "ctl", msg = Monitors.Describe(monitor, MonitorPicking && System.Windows.Forms.Screen.AllScreens.Length > 1) });
 
     /// Messages from the hidden LiveKit page.
     internal void FromPage(string type, JsonNode? m)
@@ -146,6 +186,12 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         {
             case "joined":
                 JoinResult(true);
+                sharing = true;
+                // WebView2 shares "Screen 1" = the main monitor (the picture is scaled, so its size can't identify it):
+                // input and the green frame go there.
+                monitor = 0;
+                input.Monitor = Monitors.Bounds(monitor);
+                if (frame is not null) frame.Bounds = input.Monitor;
                 // The helper learns what may be used and which monitors exist.
                 page?.Send(new { type = "send", topic = "ctl", msg = new { t = "perms", list = perms.ToList(), mode } });
                 SendMonitors();

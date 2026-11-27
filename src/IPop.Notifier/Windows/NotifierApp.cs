@@ -360,7 +360,9 @@ public sealed partial class NotifierApp : ApplicationContext
         tray.Text = text.Length > 63 ? text[..63] : text;
         var old = tray.Icon;
         tray.Icon = remoteActive ? AppIcon.Remote : AppIcon.Tray(count > 0);
-        if (old is not null && old != AppIcon.Icon && old != tray.Icon) old.Dispose();
+        // Only the per-call "unread" icons are ours to free. AppIcon.Icon and AppIcon.Remote are shared: disposing Remote
+        // after a session made the NEXT session fail to start with ObjectDisposedException (hotfix 1.8.1).
+        if (old is not null && old != tray.Icon && AppIcon.IsDisposable(old)) old.Dispose();
         if (inbox is { IsDisposed: false, Visible: true }) { inboxSoon.Stop(); inboxSoon.Start(); }
     }
 

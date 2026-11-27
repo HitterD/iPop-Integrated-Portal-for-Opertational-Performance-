@@ -41,6 +41,7 @@ static class Program
         }
 
         Native.SetCurrentProcessExplicitAppUserModelID(AppInfo.AppUserModelId);
+        Crashes.Install();
         ApplicationConfiguration.Initialize();
         System.Windows.Forms.Application.SetColorMode(SystemColorMode.System);
 

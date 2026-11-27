@@ -1,8 +1,9 @@
 namespace IPop.Notifier.Remote;
 
-/// The user's monitors for the viewer's Monitor picker (1.8.0). Index 0..n-1 = Screen.AllScreens with the main one
-/// first; -1 = "All" (the whole virtual desktop). Rectangles are virtual-desktop pixels; the host page crops the
-/// captured desktop to <see cref="Crop"/> (relative to the desktop's top-left).
+/// The user's monitors for the viewer's Monitor picker. Index 0..n-1 = Screen.AllScreens with the main one first;
+/// -1 = "All" (the whole virtual desktop). Rectangles are virtual-desktop pixels.
+/// Hotfix 1.8.1: WebView2 shares one whole screen (the 1.8.0 whole-desktop crop never started on two monitors), so the
+/// picker is read-only for now and input goes to the main monitor, which is the one shared ("Screen 1").
 internal static class Monitors
 {
     public const int All = -1;

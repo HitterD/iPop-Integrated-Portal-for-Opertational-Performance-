@@ -41,3 +41,5 @@ body.tbhide .tbar{margin-top:-52px;opacity:0;transition:.3s}
 #umin span{display:none}
 #umin{padding:0 9px}
 .tbar .seg button{padding:0 8px}
+/* Hotfix 1.8.1: a narrow viewer window wraps the toolbar instead of pushing Full screen and End off the edge. */
+@media (max-width:1260px){.tbar{flex-wrap:wrap;row-gap:4px}}
