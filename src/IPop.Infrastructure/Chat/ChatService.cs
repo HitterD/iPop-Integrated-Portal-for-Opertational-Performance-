@@ -198,14 +198,15 @@ public sealed partial class ChatService : IChatService
         });
     }
 
-    private async Task<IReadOnlyList<MentionRecipient>> BuildMentionRecipientsAsync(Guid roomId, Guid senderId, string content, CancellationToken ct)
+    private async Task<IReadOnlyList<MentionRecipient>> BuildMentionRecipientsAsync(Guid roomId, Guid senderId, string content, CancellationToken ct, Guid? excludeMessageId = null)
     {
         var segs = MentionParser.Parse(content);
         var roomType = await db.ChatRooms.AsNoTracking().Where(r => r.Id == roomId).Select(r => r.Type).FirstOrDefaultAsync(ct) ?? "group";
         var members = await db.ChatRoomMembers.AsNoTracking().Where(m => m.RoomId == roomId).ToListAsync(ct);
         var dict = members.ToDictionary(m => m.UserId, m => m.LeftAt == null);
-        // @all is an owner/admin privilege; anyone else's @[all](all) stays plain text.
-        var mayAll = members.Any(m => m.UserId == senderId && m.LeftAt == null && m.Role is "owner" or "admin");
+        // @all: active members, unless switched off for members, and capped per person per group (see ChatService.MentionAll.cs).
+        // Only asked when the text actually has one: no extra queries for ordinary messages.
+        var mayAll = segs.Any(s => s is MentionSegment.All) && await MayMentionAllAsync(roomId, senderId, roomType, excludeMessageId, ct);
         return MentionResolver.Resolve(new MentionResolutionInput(senderId, roomType, segs, dict, mayAll));
     }
 

@@ -1,4 +1,4 @@
-using IPop.Application.Chat;
+﻿using IPop.Application.Chat;
 using IPop.Application.Chat.Mentions;
 using IPop.Web.Services;
 using Microsoft.EntityFrameworkCore;
@@ -129,7 +129,7 @@ public class ChatMentionFlowTests
     }
 
     [Fact]
-    public async Task SendMessage_all_from_member_is_plain_but_from_admin_fans_out()
+    public async Task SendMessage_all_from_a_member_fans_out_by_default()
     {
         using var t = new TestDb();
         var owner = t.AddUser("OWN");
@@ -143,6 +143,25 @@ public class ChatMentionFlowTests
         var r1 = await t.NewChatService().SendMessageAsync(member.Id,
             new SendMessageRequest(room.Id, "@[all](all) hi", Guid.NewGuid(), null, null), default);
         Assert.True(r1.Success);
+        Assert.True(r1.Message!.MentionsAll);
+        Assert.Equal(2, await t.Verify().ChatMentions.CountAsync(m => m.MessageId == r1.Message.Id && m.IsAllMention));
+    }
+
+    [Fact]
+    public async Task SendMessage_all_from_a_member_is_plain_when_admins_switched_it_off_but_admin_still_may()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("OWN");
+        var member = t.AddUser("MEM");
+        var room = t.AddRoom("group", "G");
+        t.AddMember(room.Id, owner.Id, "owner");
+        t.AddMember(room.Id, member.Id, "member");
+        t.Db.ChatRooms.Single(r => r.Id == room.Id).AllowMemberMentionAll = false;
+        t.Db.SaveChanges();
+
+        var r1 = await t.NewChatService().SendMessageAsync(member.Id,
+            new SendMessageRequest(room.Id, "@[all](all) hi", Guid.NewGuid(), null, null), default);
+        Assert.True(r1.Success);
         Assert.False(r1.Message!.MentionsAll);
         Assert.Equal(0, await t.Verify().ChatMentions.CountAsync(m => m.MessageId == r1.Message.Id));
 
@@ -150,7 +169,7 @@ public class ChatMentionFlowTests
             new SendMessageRequest(room.Id, "@[all](all) hi", Guid.NewGuid(), null, null), default);
         Assert.True(r2.Success);
         Assert.True(r2.Message!.MentionsAll);
-        Assert.Equal(2, await t.Verify().ChatMentions.CountAsync(m => m.MessageId == r2.Message.Id && m.IsAllMention));
+        Assert.Equal(1, await t.Verify().ChatMentions.CountAsync(m => m.MessageId == r2.Message.Id && m.IsAllMention));
     }
 
     // ── Server: DTO carries MentionedNiks ──

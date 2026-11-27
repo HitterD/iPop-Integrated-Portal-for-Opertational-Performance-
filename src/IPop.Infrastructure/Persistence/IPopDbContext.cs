@@ -485,6 +485,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Description).HasMaxLength(500);
             e.Property(x => x.AvatarColor).HasMaxLength(9); // #RRGGBB / #RRGGBBAA
             e.Property(x => x.AvatarUrl).HasMaxLength(500);
+            e.Property(x => x.AllowMemberMentionAll).HasDefaultValue(true);
         });
 
         b.Entity<ChatRoomMember>(e =>

@@ -600,6 +600,7 @@ app.MapApproval();
 app.MapFiles();
 app.MapOnlyOffice();
 app.MapChat();
+app.MapChatGroupSettings();
 // Group photos: random 128-bit file names, served without auth so <img> tags work.
 app.MapGet("/api/chat-avatars/{name}", async (string name, IWebHostEnvironment env, IPopDbContext db, CancellationToken ct) =>
 {

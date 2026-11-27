@@ -341,7 +341,7 @@ public sealed partial class ChatService
         message.EditedAt = now;
 
         // Re-parse mentions on edit
-        var newRecipients = await BuildMentionRecipientsAsync(message.RoomId, userId, newContent, ct);
+        var newRecipients = await BuildMentionRecipientsAsync(message.RoomId, userId, newContent, ct, excludeMessageId: messageId);
         var newIds = newRecipients.Select(r => r.UserId).ToHashSet();
         var existingMentions = await db.ChatMentions.Where(m => m.MessageId == messageId).ToListAsync(ct);
         foreach (var em in existingMentions.Where(em => !newIds.Contains(em.UserId)).ToList())
