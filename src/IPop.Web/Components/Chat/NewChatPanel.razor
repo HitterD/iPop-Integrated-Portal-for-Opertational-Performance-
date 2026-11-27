@@ -74,13 +74,18 @@
     {
         @if (step == NewChatStep.Members && picked.Count > 0)
         {
+            <div class="nc-chiphead">
+                <b>@picked.Count selected</b>
+                @if (picked.Count > 3) { <span class="nc-chiphint">swipe to see everyone</span> }
+                <button type="button" @onclick="ClearPicked">Clear all</button>
+            </div>
             <div class="nc-chips" aria-label="Selected members">
                 @foreach (var m in picked)
                 {
                     var person = m;
-                    <span class="nc-chip">
+                    <span class="nc-chip" title="@IPop.Application.PersonName.Display(person.Name)">
                         <PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="20" Decorative="true" />
-                        <span class="nc-chip-name">@FirstName(person.Name)</span>
+                        <span class="nc-chip-name">@IPop.Application.PersonName.Display(person.Name)</span>
                         <button type="button" @onclick="() => Remove(person.Id)" aria-label="@($"Remove {person.Name}")"><i data-lucide="x"></i></button>
                     </span>
                 }

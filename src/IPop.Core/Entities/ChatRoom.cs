@@ -11,6 +11,8 @@ public class ChatRoom
     /// Foto grup (path relatif di storage chat-files); null = avatar inisial + warna.
     public string? AvatarUrl { get; set; }
     public bool IsActive { get; set; } = true;
+    /// Groups only: may ordinary members use @all? Owners/admins always may. Default on.
+    public bool AllowMemberMentionAll { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime LastMessageAt { get; set; }
 

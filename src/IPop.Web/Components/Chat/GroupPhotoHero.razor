@@ -1,0 +1,34 @@
+@using IPop.Application.Chat
+@* Group info hero avatar (mockup png 09): a group photo is a 96px rounded square that opens the
+   photo viewer (zoom badge); owners/admins without a photo get a camera badge that picks one. *@
+@if (Room.Type == "group" && PhotoSrc is not null)
+{
+    <button type="button" class="panel-hero-av group-av gp-photo" style="background:@Color" title="View group photo" aria-label="View group photo" @onclick="OnOpen">
+        <img class="room-photo" src="@PhotoSrc" alt="" />
+        <span class="gp-zoom" aria-hidden="true"><i data-lucide="maximize-2"></i></span>
+    </button>
+}
+else if (Room.Type == "group" && CanChange)
+{
+    <button type="button" class="panel-hero-av group-av gp-photo gp-empty" style="background:@Color" title="Add group photo" aria-label="Add group photo" disabled="@Busy" @onclick="OnChange">
+        @Initials
+        <span class="gp-zoom" aria-hidden="true"><i data-lucide="@(Busy ? "loader-circle" : "camera")"></i></span>
+    </button>
+}
+else
+{
+    <div class="panel-hero-av @(Room.Type == "group" ? "group-av" : "person-av")" style="background:@Color">
+        @if (PhotoSrc is not null) { <img class="room-photo" src="@PhotoSrc" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @Initials }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public ChatRoomDto Room { get; set; } = default!;
+    [Parameter] public string? PhotoSrc { get; set; }
+    [Parameter] public string Color { get; set; } = "";
+    [Parameter] public string Initials { get; set; } = "";
+    [Parameter] public bool CanChange { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback OnOpen { get; set; }
+    [Parameter] public EventCallback OnChange { get; set; }
+}

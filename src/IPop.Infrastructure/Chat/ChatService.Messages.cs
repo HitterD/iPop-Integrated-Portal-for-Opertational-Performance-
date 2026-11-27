@@ -286,88 +286,6 @@ public sealed partial class ChatService
         ).Take(limit).ToListAsync(ct);
     }
 
-    public async Task<MessageResultDto> EditMessageAsync(Guid userId, Guid messageId, string newContent, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(newContent))
-            return new MessageResultDto(false, null, "content_required");
-
-        if (newContent.Length > 4000)
-            return new MessageResultDto(false, null, "content_too_long");
-
-        var message = await db.ChatMessages
-            .Include(m => m.Sender)
-            .Include(m => m.Attachments)
-            .Include(m => m.Reactions)
-            .Include(m => m.ReadReceipts)
-            .FirstOrDefaultAsync(m => m.Id == messageId, ct);
-
-        if (message is null)
-            return new MessageResultDto(false, null, "message_not_found");
-
-        if (message.IsDeleted)
-            return new MessageResultDto(false, null, "message_deleted");
-
-        if (message.SenderId != userId)
-            return new MessageResultDto(false, null, "forbidden");
-        // Someone who left (or was removed from) the room no longer changes what its members read.
-        if (!await db.ChatRoomMembers.AsNoTracking().AnyAsync(m => m.RoomId == message.RoomId && m.UserId == userId && m.LeftAt == null, ct))
-            return new MessageResultDto(false, null, "forbidden");
-
-        var now = DateTime.UtcNow;
-        if ((now - message.CreatedAt).TotalHours >= 24)
-            return new MessageResultDto(false, null, "edit_window_expired");
-
-        // Save edit history
-        db.ChatMessageEdits.Add(new ChatMessageEdit
-        {
-            Id = Guid.NewGuid(),
-            MessageId = messageId,
-            PreviousContent = message.Content,
-            EditedAt = now
-        });
-
-        message.Content = newContent;
-        message.EditedAt = now;
-
-        // Re-parse mentions on edit
-        var newRecipients = await BuildMentionRecipientsAsync(message.RoomId, userId, newContent, ct);
-        var newIds = newRecipients.Select(r => r.UserId).ToHashSet();
-        var existingMentions = await db.ChatMentions.Where(m => m.MessageId == messageId).ToListAsync(ct);
-        foreach (var em in existingMentions.Where(em => !newIds.Contains(em.UserId)).ToList())
-            db.ChatMentions.Remove(em);
-        var existingIds = existingMentions.Select(em => em.UserId).ToHashSet();
-        foreach (var r in newRecipients.Where(r => !existingIds.Contains(r.UserId)))
-            db.ChatMentions.Add(new ChatMention { Id = Guid.NewGuid(), MessageId = messageId, UserId = r.UserId, IsAllMention = r.ViaAllOnly, CreatedAt = now, SuppressNotification = r.SuppressNotification });
-
-        await db.SaveChangesAsync(ct);
-
-        return new MessageResultDto(true, await MapWithMentionsAsync(message, userId, ct), null);
-    }
-
-    public async Task<MessageResultDto> DeleteMessageAsync(Guid userId, Guid messageId, bool isAdmin, CancellationToken ct)
-    {
-        var message = await db.ChatMessages
-            .Include(m => m.Sender)
-            .Include(m => m.Attachments)
-            .Include(m => m.Reactions)
-            .Include(m => m.ReadReceipts)
-            .FirstOrDefaultAsync(m => m.Id == messageId, ct);
-
-        if (message is null || message.IsDeleted)
-            return new MessageResultDto(false, null, "message_not_found");
-
-        if (message.SenderId != userId && !isAdmin)
-            return new MessageResultDto(false, null, "forbidden");
-
-        message.IsDeleted = true;
-        message.DeletedByType = (isAdmin && message.SenderId != userId) ? "admin" : "self";
-        message.DeletedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync(ct);
-
-        return new MessageResultDto(true, MapToMessageDto(message, userId), null);
-    }
-
     /// A DM whose other member blocked the sender takes nothing from them: plain sends,
     /// forwards and thread replies all go through this.
     private async Task<bool> IsBlockedInDmAsync(Guid roomId, Guid senderId, CancellationToken ct)
@@ -630,6 +548,11 @@ public sealed partial class ChatService
         return new PagedResult<RoomListDto>(roomDtos, totalCount, 1, 20);
     }
 
+    /// "Clear history" hides messages for this user everywhere, search included.
+    internal IQueryable<ChatMessage> ExcludeCleared(IQueryable<ChatMessage> q, Guid userId)
+        => q.Where(m => !db.ChatRoomUserSettings.Any(s => s.RoomId == m.RoomId && s.UserId == userId
+            && s.ClearedAt != null && m.CreatedAt <= s.ClearedAt));
+
     public async Task<PagedResult<MessageDto>> SearchMessagesAsync(Guid userId, Guid roomId, string query, int page, int pageSize, CancellationToken ct)
     {
         if (query.Length < 2)
@@ -647,6 +570,7 @@ public sealed partial class ChatService
             .AsNoTracking()
             .Where(m => m.RoomId == roomId && m.ThreadParentId == null && !m.IsDeleted
                 && EF.Functions.ILike(m.Content, pattern));
+        messagesQuery = ExcludeCleared(messagesQuery, userId);
 
         var totalCount = await messagesQuery.CountAsync(ct);
 
@@ -682,6 +606,8 @@ public sealed partial class ChatService
             .Where(m => m.ThreadParentId == null && !m.IsDeleted
                 && EF.Functions.ILike(m.Content, pattern)
                 && db.ChatRoomMembers.Any(mm => mm.RoomId == m.RoomId && mm.UserId == userId && mm.LeftAt == null));
+
+        messagesQuery = ExcludeCleared(messagesQuery, userId);
 
         var totalCount = await messagesQuery.CountAsync(ct);
 

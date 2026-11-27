@@ -90,6 +90,9 @@ public interface IChatService
     /// Toggle whether read receipts are sent for messages in this room (per-user setting).
     /// For DMs this is the reciprocal control: the other party only sees "read" if you have this enabled.
     Task<RoomSettingsResultDto> SetReadReceiptsAsync(Guid userId, Guid roomId, bool enabled, CancellationToken ct);
+    Task<RoomSettingsResultDto> SetMemberMentionAllAsync(Guid actorId, Guid roomId, bool allowed, CancellationToken ct);
+    /// The caller's own @all budget in a group (null when not an active member of a group).
+    Task<MentionAllQuotaDto?> GetMentionAllQuotaAsync(Guid userId, Guid roomId, CancellationToken ct);
 
     // Room pin / archived list
     Task<RoomSettingsResultDto> PinRoomAsync(Guid userId, Guid roomId, CancellationToken ct);

@@ -1,3 +1,4 @@
+using IPop.Api.Chat;
 using IPop.Api.Rbac;
 using IPop.Application.Chat;
 using IPop.Application.Files;
@@ -159,6 +160,9 @@ public static class ChatEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
+            if (!ChatSendLimiter.TryAcquire(http.User.FindFirst("nik")?.Value ?? userId.Value.ToString()))
+                return Results.Json(new { code = "rate_limited", message = "Too many messages. Slow down." }, statusCode: 429);
+
             var req = new SendMessageRequest(roomId, body.Content, body.IdempotencyKey, body.ReplyToId, body.Type, body.AttachmentIds, body.LinkPreviewOff);
             var result = await svc.SendMessageAsync(userId.Value, req, ct);
 
@@ -208,6 +212,7 @@ public static class ChatEndpoints
                     var e when e?.Contains("expired") == true => "edit_window_expired",
                     var e when e?.Contains("content_too_long") == true => "content_too_long",
                     var e when e?.Contains("not found") == true => "message_not_found",
+                    "not_editable" => "not_editable",
                     _ => "forbidden"
                 };
                 return Results.Json(new { code, message = result.Error }, statusCode: statusCode);
@@ -272,6 +277,9 @@ public static class ChatEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
+            if (!ChatSendLimiter.TryAcquire(http.User.FindFirst("nik")?.Value ?? userId.Value.ToString()))
+                return Results.Json(new { code = "rate_limited", message = "Too many messages. Slow down." }, statusCode: 429);
+
             var result = req.IdempotencyKey is { } operationKey
                 ? await svc.ForwardMessageAsync(userId.Value, id, req.TargetRoomId, operationKey, ct)
                 : await svc.ForwardMessageAsync(userId.Value, id, req.TargetRoomId, ct);
@@ -317,6 +325,9 @@ public static class ChatEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
+
+            if (!ChatSendLimiter.TryAcquire(http.User.FindFirst("nik")?.Value ?? userId.Value.ToString()))
+                return Results.Json(new { code = "rate_limited", message = "Too many messages. Slow down." }, statusCode: 429);
 
             var req = new SendMessageRequest(body.RoomId ?? Guid.Empty, body.Content, body.IdempotencyKey, body.ReplyToId, body.Type, body.AttachmentIds, body.LinkPreviewOff);
             var result = await svc.SendThreadReplyAsync(userId.Value, parentId, req, ct);
@@ -639,7 +650,7 @@ public static class ChatEndpoints
                 .Select(u => new { u.Name, u.PhotoPath }).FirstOrDefaultAsync(ct);
             var receipt = await db.ChatReadReceipts.AsNoTracking()
                 .FirstOrDefaultAsync(r => r.MessageId == latest.Id && r.UserId == userId.Value, ct);
-            if (reader is not null)
+            if (reader is not null && receipt?.ReadAt is not null)
                 await notifier.NotifySeenUpdateAsync(roomId, latest.Id,
                     new SeenByDto(userId.Value, reader.Name, reader.PhotoPath, receipt?.DeliveredAt, receipt?.ReadAt), ct);
             return Results.NoContent();

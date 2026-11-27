@@ -1,0 +1,32 @@
+@* Group info › Group settings (mockup png 09/11), owners/admins only: may ordinary members use @all?
+   Owners/admins always may; everyone is capped at 3 per 10 minutes (server: ChatService.MentionAll.cs). *@
+<div class="inset-group gs-atall">
+    <div class="inset-sec-header"><span class="inset-sec-title">Group settings</span></div>
+    <div class="inset-box">
+        <div class="gs-switchrow">
+            <div class="t" id="@labelId">
+                Members can use @@all
+                <small>
+                    @if (Allowed)
+                    {
+                        @($"Everyone in the group can notify all {Math.Max(0, MemberCount - 1)} members, up to 3 times per 10 minutes each. Turn off to keep @all for admins only.")
+                    }
+                    else
+                    {
+                        @("Only owners and admins can notify everyone with @all. Members see it greyed out.")
+                    }
+                </small>
+            </div>
+            <button type="button" role="switch" class="gs-sw @(Allowed ? "on" : "")" aria-checked="@(Allowed ? "true" : "false")"
+                    aria-labelledby="@labelId" disabled="@Busy" @onclick="() => OnChange.InvokeAsync(!Allowed)"></button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool Allowed { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public int MemberCount { get; set; }
+    [Parameter] public EventCallback<bool> OnChange { get; set; }
+    private readonly string labelId = "gs-atall-" + Guid.NewGuid().ToString("N")[..6];
+}

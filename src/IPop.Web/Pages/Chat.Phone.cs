@@ -58,7 +58,9 @@ public partial class Chat
     private void OnPhoneChanged() => _ = InvokeAsync(() =>
     {
         phoneActsMsgId = null;
+        phoneInfoMsgId = null;
         phoneLpBoundId = null;
+        phoneSwipeBoundId = null;
         StateHasChanged();
     });
 

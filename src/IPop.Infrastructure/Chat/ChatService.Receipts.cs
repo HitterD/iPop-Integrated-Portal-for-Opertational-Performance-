@@ -179,7 +179,7 @@ public sealed partial class ChatService
         if (msg is null || msg.IsDeleted) return new SeenListDto([], 0, 0);
         if (!await IsMemberAsync(callerId, msg.RoomId, ct)) return new SeenListDto([], 0, 0);
         var activeCount = await db.ChatRoomMembers.CountAsync(m => m.RoomId == msg.RoomId && m.LeftAt == null && m.UserId != msg.SenderId, ct);
-        var readers = await db.ChatReadReceipts.AsNoTracking().Where(r => r.MessageId == messageId && r.UserId != msg.SenderId)
+        var readers = await db.ChatReadReceipts.AsNoTracking().Where(r => r.MessageId == messageId && r.UserId != msg.SenderId && r.ReadAt != null)
             .Join(db.ChatRoomUserSettings.AsNoTracking().Where(s => s.RoomId == msg.RoomId),
                 r => r.UserId, s => s.UserId, (r, s) => new { r, s })
             .Where(x => x.s.LastReadMessageAt != null && x.s.LastReadMessageAt >= msg.CreatedAt)

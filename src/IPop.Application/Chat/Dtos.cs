@@ -55,7 +55,13 @@ public record ChatRoomDto(Guid Id, string Type, string? Name, string? Descriptio
     /// Warna avatar grup pilihan admin; null = palet default dari nama.
     string? AvatarColor = null,
     /// URL foto grup (relatif ke API); null = avatar inisial.
-    string? AvatarUrl = null);
+    string? AvatarUrl = null,
+    /// Groups: may ordinary members use @all? (owners/admins always may).
+    bool AllowMemberMentionAll = true);
+public record SetMemberMentionAllRequest(bool Allowed);
+/// The caller's @all budget in one group: Allowed = may use it at all (role or group switch);
+/// Used of Limit in the last WindowMinutes; ResetsAt (UTC) = when the oldest one leaves the window, set only when the cap is reached.
+public record MentionAllQuotaDto(bool Allowed, int Used, int Limit, int WindowMinutes, DateTime? ResetsAt);
 public record MentionUserDto(Guid UserId, string Nik, string Name, bool IsActive);
 public record CreateGroupRequest(string Name, IReadOnlyList<Guid> MemberIds);
 public record UpdateGroupIdentityRequest(string Name, string? Description, string? AvatarColor = null);

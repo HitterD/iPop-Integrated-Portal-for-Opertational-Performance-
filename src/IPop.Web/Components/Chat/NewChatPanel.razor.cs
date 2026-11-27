@@ -192,6 +192,12 @@ public partial class NewChatPanel
         focusPending = true;
     }
 
+    private void ClearPicked()
+    {
+        picked.Clear();
+        focusPending = true;
+    }
+
     private void Remove(Guid id)
     {
         picked.RemoveAll(m => m.Id == id);
@@ -302,12 +308,6 @@ public partial class NewChatPanel
     {
         var parts = new[] { p.Department }.Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
         return parts.Length > 0 ? string.Join(" · ", parts) : "";
-    }
-
-    private static string FirstName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return "?";
-        return IPop.Application.PersonName.Short(name);
     }
 
     private void OnPresenceChanged(string nik, string status)

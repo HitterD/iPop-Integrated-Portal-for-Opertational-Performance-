@@ -188,7 +188,7 @@ public sealed partial class ChatService
         var mentionDir = allMembers.Select(m => new MentionUserDto(m.UserId, m.User.Nik, m.User.Name, m.LeftAt == null)).ToList();
         var s = await db.ChatRoomUserSettings.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == userId && x.RoomId == roomId, ct);
         var readReceiptsEnabled = s?.ReadReceiptsEnabled ?? true;
-        return new ChatRoomDto(room.Id, room.Type, room.Name, room.Description, members.Count, onlineCount, members, currentRole, mentionDir, readReceiptsEnabled, room.AvatarColor, room.AvatarUrl);
+        return new ChatRoomDto(room.Id, room.Type, room.Name, room.Description, members.Count, onlineCount, members, currentRole, mentionDir, readReceiptsEnabled, room.AvatarColor, room.AvatarUrl, room.AllowMemberMentionAll);
     }
 
     public async Task<PagedResult<RoomListDto>> GetRoomsAsync(Guid userId, RoomTab tab, int page, int pageSize, CancellationToken ct)

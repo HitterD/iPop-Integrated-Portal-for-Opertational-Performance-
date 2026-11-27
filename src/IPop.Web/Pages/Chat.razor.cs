@@ -817,6 +817,8 @@ public partial class Chat
             catch { }
         }
         await BindPhoneLongPressAsync();
+        await BindPhoneSwipeAsync();
+        await BindDatePillAsync();
         if (paneReady && messagesRef.Id is { } listId && listId != scrollWatchBoundId)
         {
             selfRef ??= DotNetObjectReference.Create(this);

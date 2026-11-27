@@ -1,0 +1,198 @@
+/* BIGIS 12 chat polish (approved mockup ipop-chat-v1, mock/proposal.css). Loaded after the chat,
+   v6 and mobile layers so equal-specificity rules win by order. One section per owner decision. */
+
+/* ---------- 1. Background: same doodles, much fainter; pills on text that sits on the wallpaper ---------- */
+.chat-area .messages {
+  background-image: linear-gradient(rgba(244, 246, 242, .84), rgba(244, 246, 242, .84)), url('../../../images/chat/coffee-light.svg');
+  background-size: auto, 1120px 1190px;
+}
+[data-theme="dark"] .chat-area .messages {
+  background-image: linear-gradient(rgba(22, 35, 27, .86), rgba(22, 35, 27, .86)), url('../../../images/chat/coffee-dark.svg');
+}
+@media (max-width: 700px) {
+  .chat-area .messages { background-size: auto, 1008px 1071px; }
+}
+@media (forced-colors: active) {
+  .chat-area .messages { background-image: none; }
+}
+
+.chat-area .msg .seen-by .seen-label {
+  font-size: 11px; font-weight: 550; color: var(--ink-2); margin-left: 4px; padding: 2px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.chat-area .msg .seen-by.seen-all .seen-label { color: var(--accent); }
+.chat-area .msg .sender { display: inline-flex; align-self: flex-start; }
+.chat-area .msg .sender .sender-name {
+  padding: 1px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+/* In-list day separators: a calm pill, in the flow (they do not stick, so they never cover a bubble). */
+.chat-area .messages .date-sep {
+  padding: 3px 12px; border: 0; color: var(--ink-2);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+}
+
+/* Floating date while scrolling (owner revision): a small pill in a 40px gap at the top of the
+   list. While it shows, the list fades out under that gap, so the pill never sits on a bubble;
+   it hides 1.2 s after scrolling stops (chat-datepill.js). */
+.chat-area .conv-chat-flow > .date-float {
+  position: absolute; top: 8px; left: 50%; z-index: 6; transform: translate(-50%, -6px);
+  padding: 3px 12px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--ink-2);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .10); pointer-events: none;
+  opacity: 0; transition: opacity .18s var(--ease-smooth, ease), transform .18s var(--ease-smooth, ease);
+}
+.chat-area .conv-chat-flow > .date-float.on { opacity: 1; transform: translate(-50%, 0); }
+.chat-area .conv-chat-flow.dp-scrolling .messages {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 30px, #000 44px);
+  mask-image: linear-gradient(to bottom, transparent 0, transparent 30px, #000 44px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-area .conv-chat-flow > .date-float { transition: none; }
+}
+
+/* ---------- 2. @all: budget hint in the mention popup, limit / off states, inline notice, admin switch ---------- */
+.mention-popup .mi.limit .mi-text .role { color: var(--ink-3); }
+.mention-popup .mi-hint {
+  display: flex; align-items: center; gap: 7px; margin: 4px 4px 2px; padding: 7px 10px; border-radius: 9px;
+  background: var(--surface-2, rgba(0, 0, 0, .04)); font-size: 11.5px; color: var(--ink-3); line-height: 1.3;
+}
+.mention-popup .mi-hint .lucide { width: 14px; height: 14px; flex: none; }
+.mention-popup .mi-hint .dots { display: inline-flex; gap: 3px; margin-left: auto; flex: none; }
+.mention-popup .mi-hint .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.mention-popup .mi-hint .dots i.used { background: var(--line); }
+.mention-popup .mi-hint.reached { background: color-mix(in srgb, #FF9F0A 14%, transparent); color: #8a5200; }
+[data-theme="dark"] .mention-popup .mi-hint.reached { color: #ffc069; }
+.mention-popup .mi.off { opacity: .55; cursor: not-allowed; }
+.mention-popup .mi.off .avatar { background: var(--ink-4) !important; }
+.mention-popup .at-pill {
+  display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); margin-left: 6px; vertical-align: 1px;
+}
+.chat-area .bubble .mention.plain { background: none !important; color: inherit !important; font-weight: inherit; padding: 0; }
+.chat-area .at-toast {
+  display: flex; gap: 8px; align-items: center; margin: 0 16px 8px; padding: 9px 12px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--line); font-size: 12.5px; color: var(--ink-2);
+  box-shadow: 0 8px 22px -12px rgba(0, 0, 0, .25);
+}
+.chat-area .at-toast .lucide { width: 16px; height: 16px; color: #d98a00; flex: none; }
+.chat-area .at-toast b { color: var(--ink); }
+
+.gs-atall .gs-switchrow { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.gs-atall .gs-switchrow .t { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.gs-atall .gs-switchrow .t small { display: block; font-weight: 400; color: var(--ink-3); font-size: 12px; margin-top: 2px; line-height: 1.35; }
+.gs-atall .gs-sw {
+  width: 44px; height: 26px; border-radius: 13px; background: var(--fill, rgba(120, 120, 128, .2)); position: relative;
+  flex: none; cursor: pointer; border: 0; padding: 0; transition: background .2s;
+}
+.gs-atall .gs-sw::after {
+  content: ""; position: absolute; left: 2px; top: 2px; width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transition: transform .25s;
+}
+.gs-atall .gs-sw.on { background: var(--accent); }
+.gs-atall .gs-sw.on::after { transform: translateX(18px); }
+.gs-atall .gs-sw:disabled { opacity: .6; cursor: progress; }
+.gs-atall .gs-sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Phone info screen: same switch inside the grouped list look. */
+.m-chat-info .gs-atall { margin: 14px 16px 0; }
+.m-chat-info .gs-atall .inset-sec-header { padding: 0 4px 6px; font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.m-chat-info .gs-atall .inset-box { background: var(--surface); border-radius: 14px; }
+
+/* ---------- 3. Group photo: hero (96px, opens the viewer), header avatar, viewer action ---------- */
+.chat-area .panel-hero-av.gp-photo {
+  width: 96px; height: 96px; border-radius: 26px; padding: 0; border: 0; position: relative; overflow: hidden;
+  display: grid; place-items: center; cursor: zoom-in; color: #fff;
+  box-shadow: 0 8px 24px -10px rgba(0, 0, 0, .35); transition: transform .15s var(--ease-smooth, ease);
+}
+.chat-area .panel-hero-av.gp-photo:hover { transform: scale(1.03); }
+.chat-area .panel-hero-av.gp-photo.gp-empty { cursor: pointer; }
+.chat-area .panel-hero-av.gp-photo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.gp-photo .gp-zoom {
+  position: absolute; right: 6px; bottom: 6px; width: 24px; height: 24px; border-radius: 8px;
+  background: rgba(0, 0, 0, .5); color: #fff; display: grid; place-items: center;
+}
+.gp-photo .gp-zoom .lucide { width: 13px; height: 13px; }
+.chat-area .panel-hero-av.gp-photo:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.chat-area .header-avatar-btn.has-photo { cursor: zoom-in; overflow: hidden; }
+.m-chat-gav.gp-photo { border: 0; padding: 0; cursor: zoom-in; }
+
+.photo-viewer img.pv-square {
+  width: min(78vw, 64vh, 560px); height: auto; aspect-ratio: 1; max-width: none; max-height: none; border-radius: 22px; object-fit: cover;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+}
+.photo-viewer-foot { position: fixed; left: 0; right: 0; bottom: 22px; display: flex; justify-content: center; gap: 10px; }
+.photo-viewer-foot .pv-action {
+  display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 999px;
+  background: #fff; color: #111; font-weight: 650; font-size: 14px; border: 0; cursor: pointer;
+}
+.photo-viewer-foot .pv-action .lucide { width: 16px; height: 16px; }
+.photo-viewer-foot .pv-action:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+/* ---------- 4. Add group members: one scrollable row of chips, full names ---------- */
+.nc-chiphead { display: flex; align-items: center; gap: 6px; margin: 0 14px 6px; font-size: 12px; color: var(--ink-3); }
+.nc-chiphead b { color: var(--ink); }
+.nc-chiphead button {
+  margin-left: auto; border: 0; background: none; color: var(--accent); font-weight: 650; font-size: 12px; cursor: pointer; padding: 2px 4px;
+}
+.nc-chips {
+  flex-wrap: nowrap; max-height: none; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
+  scrollbar-width: thin; padding-bottom: 4px; gap: 6px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+.nc-chips::-webkit-scrollbar { height: 4px; }
+.nc-chips::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
+.nc-chip { flex: none; height: 32px; max-width: 168px; font-size: 13px; scroll-snap-align: start; }
+.nc-chip .nc-chip-name { max-width: 104px; }
+
+/* ---------- 5. Phone: swipe right = reply, left = Message info, one-time tip, info sheet ---------- */
+.chat-area .messages > .msg[data-lp] { touch-action: pan-y; }
+.chat-area .messages > .msg.sw-active { z-index: 2; }
+.chat-area .messages > .msg > .msg-inner { transition: transform .28s cubic-bezier(.32, .72, 0, 1); will-change: auto; }
+.chat-area .messages > .msg.sw-active > .msg-inner { will-change: transform; }
+.chat-area .msg .sw-ic {
+  position: absolute; top: 50%; width: 34px; height: 34px; margin-top: -17px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--surface); color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .18); opacity: 0; transform: scale(.4); pointer-events: none; z-index: 2;
+  transition: opacity .2s, background .15s, color .15s;
+}
+.chat-area .msg .sw-ic svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chat-area .msg .sw-ic.l { left: 4px; }
+.chat-area .msg .sw-ic.r { right: 4px; color: var(--ink-2); }
+.chat-area .msg .sw-ic.arm { background: var(--accent); color: #fff; }
+.chat-area .msg .sw-ic.r.arm { background: var(--ink-2); color: var(--surface); }
+@media (prefers-reduced-motion: reduce) {
+  .chat-area .messages > .msg > .msg-inner { transition: none; }
+}
+
+.chat-area .sw-tip {
+  display: flex; gap: 10px; align-items: center; margin: 0 12px 8px; padding: 10px 12px; border-radius: 14px;
+  background: rgba(29, 29, 31, .92); color: #fff; font-size: 12.5px; line-height: 1.35;
+}
+.chat-area .sw-tip .lucide { width: 18px; height: 18px; flex: none; }
+.chat-area .sw-tip button {
+  margin-left: auto; flex: none; color: #fff; border: 0; background: rgba(255, 255, 255, .18); border-radius: 8px;
+  height: 28px; padding: 0 10px; font-weight: 650; font-size: 12px;
+}
+
+.ph-sheet.m-msg-info .ph-sheet-body { padding: 0 16px 22px; overflow-y: auto; }
+.m-msg-info .m-chat-lift { max-width: 88%; width: fit-content; box-shadow: none; }
+.m-msg-info .msi-title { margin: 0 0 2px; font-size: 17px; font-weight: 700; color: var(--ink); }
+.m-msg-info .msi-sub { font-size: 12.5px; color: var(--ink-3); margin-bottom: 10px; }
+.m-msg-info .m-chat-lift { margin: 6px 0 12px; font-size: 14px; padding: 9px 13px; }
+.m-msg-info .m-chat-lift.out { margin-left: auto; }
+.m-msg-info .msi-note { padding: 14px 0; font-size: 13.5px; color: var(--ink-3); }
+.m-msg-info .msi-sec {
+  display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--ink-3);
+  text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 6px;
+}
+.m-msg-info .msi-sec .lucide { width: 15px; height: 15px; }
+.m-msg-info .msi-sec b { color: var(--ink); }
+.m-msg-info .msi-row { display: flex; align-items: center; gap: 11px; min-height: 48px; border-top: .5px solid var(--line-soft); }
+.m-msg-info .msi-sec + .msi-row { border-top: 0; }
+.m-msg-info .msi-row .n { flex: 1; min-width: 0; font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.m-msg-info .msi-row time { font-size: 12px; color: var(--ink-3); }

@@ -1068,7 +1068,7 @@ public partial class ChatState : IAsyncDisposable
 
         // In DM: when recipient reads, message is read.
         // In Group: all other active members must have read.
-        bool isAllRead = isDirect || (isGroup && update.TotalReadCount >= Math.Max(1, update.TotalMemberCount - 1));
+        bool isAllRead = (isDirect && update.Reader.ReadAt is not null) || (isGroup && update.TotalReadCount >= Math.Max(1, update.TotalMemberCount - 1));
 
         bool changed = false;
         for (int i = 0; i < ActiveMessages.Count; i++)
