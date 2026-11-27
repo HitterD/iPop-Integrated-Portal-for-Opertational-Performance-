@@ -744,18 +744,7 @@
                         }
                     </div>
 
-                    @if (newBelowCount > 0)
-                    {
-                        <button type="button" class="jump-latest has-new" title="Jump to latest" @onclick="JumpToLatest">
-                            <i data-lucide="arrow-down"></i>@(newBelowCount == 1 ? "1 new message" : $"{newBelowCount} new messages")
-                        </button>
-                    }
-                    else if (showJumpToLatest)
-                    {
-                        <button type="button" class="jump-latest" title="Jump to latest" aria-label="Jump to latest" @onclick="JumpToLatest">
-                            <i data-lucide="arrow-down"></i>
-                        </button>
-                    }
+                    <JumpToLatestButton @ref="jumpButton" Away="showJumpToLatest" NewCount="newBelowCount" OnJump="JumpToLatest" />
 
                     @if (swipeTipVisible && Phone.IsPhone)
                     {

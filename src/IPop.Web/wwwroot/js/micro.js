@@ -34,7 +34,7 @@ window.ipopMicro = (() => {
   function placeSlider(root, itemSel, onSel) {
     let ind = root.querySelector(':scope > .mi-ind');
     const on = [...root.querySelectorAll(':scope > ' + itemSel.split(',').map(s => s.trim()).join(', :scope > '))].find(b => b.matches(onSel));
-    if (!on) { if (ind) ind.style.opacity = '0'; root.classList.remove('mi-live'); return; }
+    if (!on) { if (ind) ind.style.opacity = '0'; if (root.classList.contains('mi-live')) root.classList.remove('mi-live'); return; }
     if (!ind) {
       ind = document.createElement('span');
       ind.className = 'mi-ind';
@@ -48,7 +48,7 @@ window.ipopMicro = (() => {
     ind.style.top = on.offsetTop + 'px';
     ind.style.width = on.offsetWidth + 'px';
     ind.style.height = on.offsetHeight + 'px';
-    root.classList.add('mi-live');
+    if (!root.classList.contains('mi-live')) root.classList.add('mi-live');
   }
   // One document walk for all slider kinds (this runs after every render; big pages such as a 300-row
   // project table have ~18k nodes, and 13 separate querySelectorAll passes cost ~30 ms per tick).
@@ -94,7 +94,9 @@ window.ipopMicro = (() => {
     });
     const pending = side.querySelector('.nav-item.mi-tab-to');
     if (pending) return; // keep the tab where the press put it until the page arrives
-    side.classList.remove('tab-pending');
+    // classList.remove/dataset writes fire the MutationObserver even when nothing changes, and this
+    // runs from that observer: unguarded it re-scheduled itself every frame, forever.
+    if (side.classList.contains('tab-pending')) side.classList.remove('tab-pending');
     // Navy shell (css/shell/friendly.css): the pill is the open-page tab.
     if (side.classList.contains('nav-tab') && !(window.ipop && ipop.mobile && ipop.mobile.isMobile())) {
       moveTab(side, glide, active);
@@ -132,7 +134,7 @@ window.ipopMicro = (() => {
         { duration: 340, delay: 70, easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'backwards' });
     }
     if (from === undefined || +from !== top) revealNavItem(item, from !== undefined);
-    glide.dataset.top = top;
+    if (from === undefined || +from !== top) glide.dataset.top = top;
     glide.style.opacity = '1';
     glide.style.left = left + 'px';
     glide.style.right = 'auto';
@@ -410,11 +412,11 @@ window.ipopMicro = (() => {
     if (!box) return;
     const sel = box.querySelector(':scope > .cp-sel'), on = box.querySelector('.cp-row.active');
     if (!sel) return;
-    if (!on) { sel.style.opacity = '0'; box.classList.remove('mi-live'); return; }
+    if (!on) { sel.style.opacity = '0'; if (box.classList.contains('mi-live')) box.classList.remove('mi-live'); return; }
     sel.style.top = on.offsetTop + 'px';
     sel.style.height = on.offsetHeight + 'px';
     sel.style.opacity = '1';
-    box.classList.add('mi-live');
+    if (!box.classList.contains('mi-live')) box.classList.add('mi-live');
   }
 
   // ── Observe renders (debounced to one frame) ──
