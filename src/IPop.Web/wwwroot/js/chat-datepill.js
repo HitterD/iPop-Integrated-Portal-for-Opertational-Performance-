@@ -1,7 +1,11 @@
 // Chat (BIGIS 12, owner revision): while the list scrolls, a small date pill floats in an empty
-// 40px strip at the top of the messages (the list fades out under that strip via .dp-scrolling),
+// 40px strip at the top of the messages (the list fades out under that strip while the pill is on),
 // so the pill never covers a bubble. It hides 1.2 s after scrolling stops. Pure part exported
 // for tests/chat-datepill.test.cjs.
+// Perf: only the pill itself changes while scrolling. A class on an ancestor of the list, or new
+// text in the pill, restyles all ~16k nodes of a long chat (Radzen's `[class*=" rz-"] *` and
+// `:has()` rules), ~150 ms per scroll start/stop. So the mask hangs off `.date-float.on + .messages`
+// and the label is an attribute drawn by CSS (`content: attr(data-label)`).
 (function (root) {
   /** Label of the day the top of the viewport is in: the last separator at or above `top`. */
   function currentLabel(seps, top) {
@@ -22,12 +26,8 @@
     bind(list, pill) {
       if (!list || !pill || list._dp) return;
       list._dp = true;
-      const flow = list.parentElement;
       let timer = null, frame = 0, lastTop = list.scrollTop;
-      const hide = () => {
-        pill.classList.remove('on');
-        if (flow) flow.classList.remove('dp-scrolling');
-      };
+      const hide = () => { if (pill.classList.contains('on')) pill.classList.remove('on'); };
       const update = () => {
         frame = 0;
         const top = list.scrollTop;
@@ -38,10 +38,10 @@
         const label = currentLabel(seps, top + 8);
         // At the very top the real separator is visible: no floating copy needed.
         if (!label || top < 24) { hide(); return; }
-        if (pill.textContent !== label) pill.textContent = label;
-        pill.style.top = (list.offsetTop + 8) + 'px';
-        pill.classList.add('on');
-        if (flow) flow.classList.add('dp-scrolling');
+        if (pill.dataset.label !== label) pill.dataset.label = label;
+        const y = (list.offsetTop + 8) + 'px';
+        if (pill.style.top !== y) pill.style.top = y;
+        if (!pill.classList.contains('on')) pill.classList.add('on');
         clearTimeout(timer);
         timer = setTimeout(hide, HIDE_MS);
       };

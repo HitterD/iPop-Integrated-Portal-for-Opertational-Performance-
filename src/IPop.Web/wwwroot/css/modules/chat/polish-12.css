@@ -37,7 +37,8 @@
 
 /* Floating date while scrolling (owner revision): a small pill in a 40px gap at the top of the
    list. While it shows, the list fades out under that gap, so the pill never sits on a bubble;
-   it hides 1.2 s after scrolling stops (chat-datepill.js). */
+   it hides 1.2 s after scrolling stops (chat-datepill.js). The label is an attribute and the mask
+   follows the pill (sibling selector): restyling an ancestor of a long list costs ~150 ms a time. */
 .chat-area .conv-chat-flow > .date-float {
   position: absolute; top: 8px; left: 50%; z-index: 6; transform: translate(-50%, -6px);
   padding: 3px 12px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--ink-2);
@@ -46,14 +47,17 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, .10); pointer-events: none;
   opacity: 0; transition: opacity .18s var(--ease-smooth, ease), transform .18s var(--ease-smooth, ease);
 }
+.chat-area .conv-chat-flow > .date-float::after { content: attr(data-label); }
 .chat-area .conv-chat-flow > .date-float.on { opacity: 1; transform: translate(-50%, 0); }
-.chat-area .conv-chat-flow.dp-scrolling .messages {
+.chat-area .conv-chat-flow > .date-float.on + .messages {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 30px, #000 44px);
   mask-image: linear-gradient(to bottom, transparent 0, transparent 30px, #000 44px);
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-area .conv-chat-flow > .date-float { transition: none; }
 }
+/* Jump to latest stays rendered (see Chat.razor) and is switched off here. */
+.chat-area .jump-latest.jl-off { display: none; }
 
 /* ---------- 2. @all: budget hint in the mention popup, limit / off states, inline notice, admin switch ---------- */
 .mention-popup .mi.limit .mi-text .role { color: var(--ink-3); }
