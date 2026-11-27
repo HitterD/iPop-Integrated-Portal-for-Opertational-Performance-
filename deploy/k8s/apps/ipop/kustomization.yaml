@@ -12,7 +12,7 @@ resources:
 images:
   - name: ipop-api
     newName: ghcr.io/hitterd/ipop-api
-    newTag: "main-6d404daf4d11"
+    newTag: "main-5a91e5e41aec"
   - name: ipop-web
     newName: ghcr.io/hitterd/ipop-web
-    newTag: "main-6d404daf4d11"
+    newTag: "main-5a91e5e41aec"
