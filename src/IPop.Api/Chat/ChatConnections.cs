@@ -3,8 +3,8 @@ using System.Collections.Concurrent;
 namespace IPop.Api.Chat;
 
 /// Live ChatHub connection ids per user, so the server can pull a removed member's sockets out of
-/// a room group itself instead of trusting their client to call LeaveRoom. Per process: the API
-/// runs as one node; with more nodes each node still removes the connections it holds.
+/// a room group itself instead of trusting their client to call LeaveRoom. Per process; ChatRemovalBus relays removals over Redis so every API replica
+/// removes the connections it holds.
 public static class ChatConnections
 {
     private static readonly ConcurrentDictionary<Guid, ConcurrentDictionary<string, byte>> ByUser = new();

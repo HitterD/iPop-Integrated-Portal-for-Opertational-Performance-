@@ -290,6 +290,7 @@ builder.Services.AddHostedService<IPop.Infrastructure.Notes.NotesTrashWorker>();
 if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Notes.NotesReminderWorker>();
 if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Notes.NotesRecurrenceWorker>();
 builder.Services.AddHostedService<IPop.Api.Notes.NotesEvictionBus>();
+builder.Services.AddHostedService<IPop.Api.Chat.ChatRemovalBus>();
 builder.Services.AddHostedService<ChatMentionNotifyWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Projects.TaskReminderWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Projects.ProjectAutomationWorker>();

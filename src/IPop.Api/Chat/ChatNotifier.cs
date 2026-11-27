@@ -91,10 +91,15 @@ public sealed class ChatNotifier(IHubContext<ChatHub> hub, IPopDbContext db,
     {
         // Unsubscribe server-side first: a removed member must stop receiving the room's live events
         // whether or not their client honours "removedFromRoom".
-        await Task.WhenAll(ChatConnections.Of(removedUserId)
-            .Select(c => hub.Groups.RemoveFromGroupAsync(c, Group(roomId), ct)));
+        await RemoveLocalConnectionsAsync(hub, removedUserId, roomId, ct);
+        // Other API replicas hold other sockets of this user: tell them to do the same.
+        if (ChatRemovalBus.Publish is { } publish) await publish(removedUserId, roomId);
         await hub.Clients.User(removedUserId.ToString()).SendAsync("removedFromRoom", roomId, ct);
     }
+
+    /// Pulls this process's sockets of the user out of the room group.
+    internal static Task RemoveLocalConnectionsAsync(IHubContext<ChatHub> hub, Guid userId, Guid roomId, CancellationToken ct)
+        => Task.WhenAll(ChatConnections.Of(userId).Select(c => hub.Groups.RemoveFromGroupAsync(c, Group(roomId), ct)));
 
     public Task NotifyAddedAsync(IEnumerable<Guid> userIds, Guid roomId, CancellationToken ct)
         => hub.Clients.Users(userIds.Select(u => u.ToString()).ToList()).SendAsync("addedToRoom", roomId, ct);
