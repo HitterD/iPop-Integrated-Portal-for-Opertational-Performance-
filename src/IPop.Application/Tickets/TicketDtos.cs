@@ -92,6 +92,16 @@ public record TicketMessageDto(string Id, string? Sender, bool Mine, string Cont
 /// Offline = iDesk couldn't be reached; Last then holds the latest preview the webhook brought.
 public record TicketMessagesDto(IReadOnlyList<TicketMessageDto> Messages, int Unread, string? Url, bool Offline, TicketMessageDto? Last);
 
+/// Assigned agent's read-only preview of an iDesk ticket (/idesk/tickets/{id}), fetched live from iDesk.
+public record IdeskTicketPreviewDto(
+    string Id,
+    string? TicketNumber,
+    string Status,
+    string Priority,
+    string? AssigneeName,
+    IReadOnlyList<TicketMessageDto> Messages,
+    bool MessagesUnavailable = false);
+
 public record TicketListDto(
     IReadOnlyList<TicketListItemDto> Tickets,
     DateTime? SyncedAt,     // last successful sync with iDesk for this user

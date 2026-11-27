@@ -16,7 +16,7 @@ namespace IPop.Infrastructure.Tickets;
 /// iDesk is the source of truth and is consulted by sync, reconcile, retries and its webhook.
 /// A new ticket is stored as SENDING with its externalRef before the POST, so a timeout never
 /// loses it and a resend can't create a duplicate (iDesk is idempotent on externalRef).
-public sealed class TicketService(
+public sealed partial class TicketService(
     IPopDbContext db,
     IIdeskClient idesk,
     TicketModuleCache modules,

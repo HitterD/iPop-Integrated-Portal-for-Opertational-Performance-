@@ -24,6 +24,9 @@ public enum TicketWebhookKind { Applied, Duplicate, UnknownRequester, Invalid }
 public enum TicketReplyKind { Sent, Invalid, NotFound, NotSent, Rejected, NotConfigured, Unreachable }
 public sealed record TicketReplyOutcome(TicketReplyKind Kind, string? Message);
 
+public enum IdeskPreviewKind { Ok, NotFound, NotConfigured, Unreachable }
+public sealed record IdeskPreviewOutcome(IdeskPreviewKind Kind, IdeskTicketPreviewDto? Preview = null, string? Message = null);
+
 public interface ITicketService
 {
     /// Null when iDesk is unreachable or not configured and nothing is cached.
@@ -48,4 +51,6 @@ public interface ITicketService
     Task<int> ProcessOutboxAsync(DateTime now, CancellationToken ct = default);
     /// One reconcile pass over open tickets (silent). Returns tickets changed.
     Task<int> ReconcileAsync(CancellationToken ct = default);
+    /// Assigned agent's live preview (ticket facts + public messages) for /idesk/tickets/{id}.
+    Task<IdeskPreviewOutcome> GetIdeskPreviewAsync(Guid userId, Guid ideskTicketId, CancellationToken ct = default);
 }
