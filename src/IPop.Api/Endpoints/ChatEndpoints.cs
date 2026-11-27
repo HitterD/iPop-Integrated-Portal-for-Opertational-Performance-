@@ -1,3 +1,4 @@
+using IPop.Api.Chat;
 using IPop.Api.Rbac;
 using IPop.Application.Chat;
 using IPop.Application.Files;
@@ -159,6 +160,9 @@ public static class ChatEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
+            if (!ChatSendLimiter.TryAcquire(http.User.FindFirst("nik")?.Value ?? userId.Value.ToString()))
+                return Results.Json(new { code = "rate_limited", message = "Too many messages. Slow down." }, statusCode: 429);
+
             var req = new SendMessageRequest(roomId, body.Content, body.IdempotencyKey, body.ReplyToId, body.Type, body.AttachmentIds, body.LinkPreviewOff);
             var result = await svc.SendMessageAsync(userId.Value, req, ct);
 
@@ -273,6 +277,9 @@ public static class ChatEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
+            if (!ChatSendLimiter.TryAcquire(http.User.FindFirst("nik")?.Value ?? userId.Value.ToString()))
+                return Results.Json(new { code = "rate_limited", message = "Too many messages. Slow down." }, statusCode: 429);
+
             var result = req.IdempotencyKey is { } operationKey
                 ? await svc.ForwardMessageAsync(userId.Value, id, req.TargetRoomId, operationKey, ct)
                 : await svc.ForwardMessageAsync(userId.Value, id, req.TargetRoomId, ct);
@@ -318,6 +325,9 @@ public static class ChatEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
+
+            if (!ChatSendLimiter.TryAcquire(http.User.FindFirst("nik")?.Value ?? userId.Value.ToString()))
+                return Results.Json(new { code = "rate_limited", message = "Too many messages. Slow down." }, statusCode: 429);
 
             var req = new SendMessageRequest(body.RoomId ?? Guid.Empty, body.Content, body.IdempotencyKey, body.ReplyToId, body.Type, body.AttachmentIds, body.LinkPreviewOff);
             var result = await svc.SendThreadReplyAsync(userId.Value, parentId, req, ct);

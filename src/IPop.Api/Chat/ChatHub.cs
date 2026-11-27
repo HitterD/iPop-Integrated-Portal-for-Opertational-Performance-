@@ -14,9 +14,6 @@ namespace IPop.Api.Chat;
 /// </summary>
 public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbContext db, IPermissionEvaluator perms, IRealtime realtime) : Hub
 {
-    // In-memory sliding-window rate limiter: userId → (count, windowStart)
-    private static readonly ConcurrentDictionary<string, (int Count, DateTime WindowStart)> RateLimits = new();
-
     // Typing state: roomId → { userNik → lastTypingBroadcast }
     private static readonly ConcurrentDictionary<Guid, ConcurrentDictionary<string, DateTime>> TypingState = new();
 
@@ -94,7 +91,7 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         if (request.Content.Length > 4000) return Fail("payload_too_large");
 
         // Rate limit: 30 messages per 60-second sliding window (Req 30.6)
-        if (!CheckRateLimit(nik)) return Fail("rate_limited");
+        if (!ChatSendLimiter.TryAcquire(nik)) return Fail("rate_limited");
 
         var req = new SendMessageRequest(request.RoomId, request.Content, request.IdempotencyKey, request.ReplyToId, request.Type, request.AttachmentIds, request.LinkPreviewOff);
         var result = await chatService.SendMessageAsync(userId.Value, req, Context.ConnectionAborted);
@@ -308,36 +305,5 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
             .Select(u => u.Name)
             .FirstOrDefaultAsync(Context.ConnectionAborted);
         return name ?? nik;
-    }
-
-    /// <summary>
-    /// Sliding-window rate limiter: 30 messages per 60-second window per user.
-    /// Atomic via AddOrUpdate + opportunistic eviction of stale entries.
-    /// </summary>
-    private static bool CheckRateLimit(string nik)
-    {
-        var now = DateTime.UtcNow;
-        var allowed = true;
-
-        RateLimits.AddOrUpdate(nik,
-            _ => (1, now),
-            (_, prev) =>
-            {
-                if ((now - prev.WindowStart).TotalSeconds > 60)
-                    return (1, now);
-                if (prev.Count >= 30) { allowed = false; return prev; }
-                return (prev.Count + 1, prev.WindowStart);
-            });
-
-        // Opportunistic eviction: if this check created contention, piggyback cleanup
-        // of entries idle >10 min (cheap — only when dictionary is large)
-        if (RateLimits.Count > 500)
-        {
-            foreach (var kv in RateLimits)
-                if ((now - kv.Value.WindowStart).TotalMinutes > 10)
-                    RateLimits.TryRemove(kv.Key, out _);
-        }
-
-        return allowed;
     }
 }
