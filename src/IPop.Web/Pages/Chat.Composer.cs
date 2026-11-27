@@ -491,7 +491,7 @@ public partial class Chat
             var me = GetCurrentUserNik();
             var members = (ChatSvc.ActiveRoom?.Members ?? []).Where(m => m.Nik != me).ToList();
             mentionSuggestions = ComposerMentionModel.Filter(members, query, 10).ToList();
-            mentionShowAll = IsGroupAdmin;
+            mentionShowAll = MayMentionAll;
             var allMatches = mentionShowAll && "all".StartsWith(mentionFilter, StringComparison.Ordinal);
             mentionPopupOpen = mentionSuggestions.Count > 0 || allMatches;
             mentionTaskProject = null;
@@ -592,8 +592,8 @@ public partial class Chat
     {
         if (pick.IsAll)
         {
-            // Owner/admin only (the server enforces the same rule).
-            if (IsGroupAdmin) await ReplaceActiveMention(MentionSyntax.AllLabel, new MentionSegment.All());
+            // Active group members, unless admins turned it off (the server enforces the same rule).
+            if (MayMentionAll) await ReplaceActiveMention(MentionSyntax.AllLabel, new MentionSegment.All());
             else CloseMentionPopup(true);
             return;
         }
