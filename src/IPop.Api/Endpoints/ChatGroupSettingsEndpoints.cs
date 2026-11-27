@@ -18,9 +18,7 @@ public static class ChatGroupSettingsEndpoints
         g.MapPut("/rooms/{roomId:guid}/mention-all", async (Guid roomId, SetMemberMentionAllRequest req,
             HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db, CancellationToken ct) =>
         {
-            var userId = IPop.Api.Auth.CurrentUser.IdFromToken(http.User)
-                ?? (http.User.FindFirst("nik")?.Value is { Length: > 0 } nik
-                    ? (await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Nik == nik, ct))?.Id : null);
+            var userId = await UserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
 
             var r = await svc.SetMemberMentionAllAsync(userId.Value, roomId, req.Allowed, ct);
@@ -36,6 +34,21 @@ public static class ChatGroupSettingsEndpoints
             return Results.Ok(r);
         }).RequirePermission("chat.send");
 
+        // GET /api/chat/rooms/{roomId}/mention-all/quota — the caller's @all budget (composer hint).
+        g.MapGet("/rooms/{roomId:guid}/mention-all/quota", async (Guid roomId, HttpContext http, IChatService svc,
+            IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var q = await svc.GetMentionAllQuotaAsync(userId.Value, roomId, ct);
+            return q is null ? Results.Json(new { code = "forbidden", message = "Not a member of this group." }, statusCode: 403) : Results.Ok(q);
+        });
+
         return app;
     }
+
+    private static async Task<Guid?> UserIdAsync(HttpContext http, IPopDbContext db, CancellationToken ct)
+        => IPop.Api.Auth.CurrentUser.IdFromToken(http.User)
+            ?? (http.User.FindFirst("nik")?.Value is { Length: > 0 } nik
+                ? (await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Nik == nik, ct))?.Id : null);
 }

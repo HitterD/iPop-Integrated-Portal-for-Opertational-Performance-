@@ -28,12 +28,36 @@ public sealed partial class ChatService
         if (role is null) return false;
         var allow = await db.ChatRooms.AsNoTracking().Where(r => r.Id == roomId)
             .Select(r => r.AllowMemberMentionAll).FirstOrDefaultAsync(ct);
+        var used = (await AllMentionTimesAsync(roomId, senderId, excludeMessageId, ct)).Count;
+        return MayMentionAll(role, allow, used);
+    }
+
+    /// When each of the sender's @all messages in the current window went out (one per message).
+    private async Task<List<DateTime>> AllMentionTimesAsync(Guid roomId, Guid senderId, Guid? excludeMessageId, CancellationToken ct)
+    {
         var since = DateTime.UtcNow - MentionAllWindow;
-        var used = await db.ChatMentions.AsNoTracking()
+        return await db.ChatMentions.AsNoTracking()
             .Where(c => c.IsAllMention && c.CreatedAt > since && c.MessageId != excludeMessageId
                 && c.Message.RoomId == roomId && c.Message.SenderId == senderId)
-            .Select(c => c.MessageId).Distinct().CountAsync(ct);
-        return MayMentionAll(role, allow, used);
+            .GroupBy(c => c.MessageId).Select(g => g.Min(c => c.CreatedAt)).ToListAsync(ct);
+    }
+
+    /// The caller's own @all budget in this group, for the composer hint ("2 of 3 left").
+    /// Null when the caller is not an active member of a group.
+    public async Task<MentionAllQuotaDto?> GetMentionAllQuotaAsync(Guid userId, Guid roomId, CancellationToken ct)
+    {
+        var room = await db.ChatRooms.AsNoTracking().Where(r => r.Id == roomId)
+            .Select(r => new { r.Type, r.AllowMemberMentionAll }).FirstOrDefaultAsync(ct);
+        if (room is null || room.Type != "group") return null;
+        var role = await db.ChatRoomMembers.AsNoTracking()
+            .Where(m => m.RoomId == roomId && m.UserId == userId && m.LeftAt == null)
+            .Select(m => m.Role).FirstOrDefaultAsync(ct);
+        if (role is null) return null;
+        var times = await AllMentionTimesAsync(roomId, userId, null, ct);
+        var allowed = role is "owner" or "admin" || room.AllowMemberMentionAll;
+        DateTime? resetsAt = times.Count >= MentionAllLimit ? times.Min() + MentionAllWindow : null;
+        return new MentionAllQuotaDto(allowed, Math.Min(times.Count, MentionAllLimit), MentionAllLimit,
+            (int)MentionAllWindow.TotalMinutes, resetsAt);
     }
 
     /// Owner/admin only: lets ordinary members use @all in this group (default on) or not.

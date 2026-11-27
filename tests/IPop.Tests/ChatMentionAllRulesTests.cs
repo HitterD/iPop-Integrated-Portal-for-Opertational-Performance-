@@ -94,4 +94,30 @@ public class ChatMentionAllRulesTests
         Assert.Equal("not_a_group", (await t.NewChatService().SetMemberMentionAllAsync(owner.Id, dm.Id, false, default)).Error);
         Assert.False((await SendAll(t, owner.Id, dm.Id)).Message!.MentionsAll);
     }
+
+    [Fact]
+    public async Task Quota_counts_own_all_messages_and_says_when_the_cap_resets()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("MB1"); var b = t.AddUser("MB2"); var outsider = t.AddUser("MB3");
+        var room = t.AddRoom("group", "G");
+        t.AddMember(room.Id, a.Id, "member"); t.AddMember(room.Id, b.Id, "owner");
+
+        var q0 = await t.NewChatService().GetMentionAllQuotaAsync(a.Id, room.Id, default);
+        Assert.Equal((true, 0, 3, 10), (q0!.Allowed, q0.Used, q0.Limit, q0.WindowMinutes));
+        Assert.Null(q0.ResetsAt);
+
+        for (var i = 0; i < 3; i++) await SendAll(t, a.Id, room.Id);
+        var q3 = await t.NewChatService().GetMentionAllQuotaAsync(a.Id, room.Id, default);
+        Assert.Equal(3, q3!.Used);
+        Assert.NotNull(q3.ResetsAt);
+        Assert.InRange(q3.ResetsAt!.Value, DateTime.UtcNow.AddMinutes(9), DateTime.UtcNow.AddMinutes(10.1));
+        // b's budget is untouched by a.
+        Assert.Equal(0, (await t.NewChatService().GetMentionAllQuotaAsync(b.Id, room.Id, default))!.Used);
+
+        await t.NewChatService().SetMemberMentionAllAsync(b.Id, room.Id, false, default);
+        Assert.False((await t.NewChatService().GetMentionAllQuotaAsync(a.Id, room.Id, default))!.Allowed);
+        Assert.True((await t.NewChatService().GetMentionAllQuotaAsync(b.Id, room.Id, default))!.Allowed);
+        Assert.Null(await t.NewChatService().GetMentionAllQuotaAsync(outsider.Id, room.Id, default));
+    }
 }
