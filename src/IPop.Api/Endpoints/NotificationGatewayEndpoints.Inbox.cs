@@ -16,7 +16,8 @@ public static partial class NotificationGatewayEndpoints
     /// </summary>
     internal static async Task<InboxListResult> ListInboxCore(
         IPopDbContext db, Guid userId, string? type, string? status, int page, int pageSize, CancellationToken ct,
-        string? category = null, string? search = null, bool summary = true)
+        string? category = null, string? search = null, bool summary = true,
+        DateTime? beforeAt = null, Guid? beforeId = null)
     {
         var p = Math.Max(1, page);
         var size = Math.Clamp(pageSize, 1, 100);
@@ -75,11 +76,27 @@ public static partial class NotificationGatewayEndpoints
                 d.Status != NotificationStatus.Acknowledged &&
                 (d.SnoozedUntil == null || d.SnoozedUntil <= now), ct);
 
-        // Newest first: the per-recipient timestamp (DeliveredAt, else UpdatedAt) leads.
-        // ClassifyEventType is not translatable to SQL — pull the raw event type and map in memory.
-        var rows = await q
+        // Keyset cursor pagination when beforeAt is supplied; otherwise page-based offset.
+        // Deterministic ordering (timestamp DESC, RequestId DESC) prevents skipped/duplicated boundary ties.
+        var pageQuery = q;
+        int? remainingAfterCursor = null;
+        if (beforeAt is { } cursorAt)
+        {
+            var utcAt = cursorAt.Kind == DateTimeKind.Local
+                ? cursorAt.ToUniversalTime()
+                : DateTime.SpecifyKind(cursorAt, DateTimeKind.Utc);
+            pageQuery = beforeId is { } bid
+                ? pageQuery.Where(d => (d.DeliveredAt ?? d.UpdatedAt) < utcAt || ((d.DeliveredAt ?? d.UpdatedAt) == utcAt && d.RequestId.CompareTo(bid) < 0))
+                : pageQuery.Where(d => (d.DeliveredAt ?? d.UpdatedAt) < utcAt);
+            remainingAfterCursor = await pageQuery.CountAsync(ct);
+        }
+
+        var ordered = pageQuery
             .OrderByDescending(d => d.DeliveredAt ?? d.UpdatedAt)
-            .Skip((p - 1) * size).Take(size)
+            .ThenByDescending(d => d.RequestId);
+
+        var rows = await (beforeAt is null ? ordered.Skip((p - 1) * size) : ordered)
+            .Take(size)
             .Select(d => new
             {
                 d.RequestId,
@@ -111,22 +128,28 @@ public static partial class NotificationGatewayEndpoints
         var snoozedCount = !summary ? 0 : await db.NotificationDeliveries.AsNoTracking()
             .CountAsync(d => d.UserId == userId && d.SnoozedUntil != null && d.SnoozedUntil > now, ct);
 
-        var items = rows.Select(r => new InboxItemRow(
-            r.RequestId,
-            ClassifyEventType(r.EventType),
-            r.Title,
-            r.Body,
-            r.Source,
-            r.DeliveredAt ?? r.UpdatedAt,
-            r.Status == NotificationStatus.Read || r.Status == NotificationStatus.Acknowledged,
-            r.Priority,
-            r.TargetUrl,
-            r.SnoozedUntil,
-            r.ActorUserId,
-            r.ActorUserId is { } a ? actorNames.GetValueOrDefault(a) : null,
-            r.EventType,
-            NotificationCategory.Of(r.EventType, r.TargetUrl))).ToList();
+        var items = rows.Select(r =>
+        {
+            var rawAt = r.DeliveredAt ?? r.UpdatedAt;
+            var atUtc = rawAt.Kind == DateTimeKind.Local ? rawAt.ToUniversalTime() : DateTime.SpecifyKind(rawAt, DateTimeKind.Utc);
+            return new InboxItemRow(
+                r.RequestId,
+                ClassifyEventType(r.EventType),
+                r.Title,
+                r.Body,
+                r.Source,
+                atUtc,
+                r.Status == NotificationStatus.Read || r.Status == NotificationStatus.Acknowledged,
+                r.Priority,
+                r.TargetUrl,
+                r.SnoozedUntil,
+                r.ActorUserId,
+                r.ActorUserId is { } a ? actorNames.GetValueOrDefault(a) : null,
+                r.EventType,
+                NotificationCategory.Of(r.EventType, r.TargetUrl));
+        }).ToList();
 
-        return new InboxListResult(items, total, unread, p, size, byCategory, snoozedCount);
+        var hasMore = remainingAfterCursor is { } rem ? rem > items.Count : total > (p - 1) * size + items.Count;
+        return new InboxListResult(items, total, unread, p, size, byCategory, snoozedCount, hasMore);
     }
 }
