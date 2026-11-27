@@ -237,6 +237,7 @@ public partial class Chat
         var previews = hasAttachments ? sentAttachments.Select(a => a.AsDto()).ToList() : null;
         var blobUrls = sentAttachments.Where(p => !string.IsNullOrEmpty(p.PreviewUrl)).Select(p => p.PreviewUrl!).ToList();
         OnComposerSendStarted(new ComposerSendSnapshot(sendRoomId.Value, key, text, composerText, replyId, sentAttachments));
+        NoteMentionAllSend(text);
         var linkOff = composerLinkOff is { } off && MentionRenderer.FirstWebLink(text) == off;
         ResetComposerLink();
 
@@ -491,7 +492,9 @@ public partial class Chat
             var me = GetCurrentUserNik();
             var members = (ChatSvc.ActiveRoom?.Members ?? []).Where(m => m.Nik != me).ToList();
             mentionSuggestions = ComposerMentionModel.Filter(members, query, 10).ToList();
-            mentionShowAll = MayMentionAll;
+            // Members see @all greyed when an admin switched it off, so the rule is visible.
+            mentionShowAll = MayMentionAll || MentionAllOff;
+            EnsureMentionAllQuota();
             var allMatches = mentionShowAll && "all".StartsWith(mentionFilter, StringComparison.Ordinal);
             mentionPopupOpen = mentionSuggestions.Count > 0 || allMatches;
             mentionTaskProject = null;
@@ -594,7 +597,7 @@ public partial class Chat
         {
             // Active group members, unless admins turned it off (the server enforces the same rule).
             if (MayMentionAll) await ReplaceActiveMention(MentionSyntax.AllLabel, new MentionSegment.All());
-            else CloseMentionPopup(true);
+            else { CloseMentionPopup(true); ShowMentionAllNotice("@all is for admins only.", "A group admin turned it off for members."); }
             return;
         }
         if (pick.Member is not null) await SelectMention(pick.Member);

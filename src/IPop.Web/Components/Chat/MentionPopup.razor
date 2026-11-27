@@ -11,11 +11,21 @@
             var idx = i;
             var item = displayItems[idx];
             var sel = idx == selectedIndex;
-            <div id="mention-opt-@idx" role="option" aria-selected="@sel.ToString().ToLowerInvariant()" class="mi @(sel ? "sel" : "")" @onmousedown:preventDefault @onclick="() => Pick(idx)">
+            <div id="mention-opt-@idx" role="option" aria-selected="@sel.ToString().ToLowerInvariant()" aria-disabled="@(item.IsAll && AllOff ? "true" : null)"
+                 class="mi @(sel ? "sel" : "") @(item.IsAll && AllOff ? "off" : "") @(item.IsAll && AllLimitReached ? "limit" : "")" @onmousedown:preventDefault @onclick="() => Pick(idx)">
                 @if (item.IsAll)
                 {
                     <div class="avatar mention-avatar mention-all">@@</div>
-                    <div class="mi-text"><div class="name">@@all</div><div class="role">Notify everyone in this group (@item.AllCount)</div></div>
+                    <div class="mi-text">
+                        <div class="name">
+                            <span>@@all</span>
+                            @if (AllLimitReached)
+                            {
+                                <span class="at-pill">limit reached</span>
+                            }
+                        </div>
+                        <div class="role">@(AllOff ? "Turned off by a group admin" : $"Notify everyone in this group ({item.AllCount})")</div>
+                    </div>
                 }
                 else
                 {
@@ -23,6 +33,10 @@
                     <div class="mi-text"><div class="name">@item.Member.Name</div><div class="role">@RoleLabel(item.Member)</div></div>
                 }
             </div>
+            @if (item.IsAll && !AllOff && AllQuota is { } q)
+            {
+                @AllHint(q)
+            }
         }
         <span class="visually-hidden" aria-live="polite">@AriaLiveText</span>
     </div>
@@ -35,6 +49,10 @@
     [Parameter] public string CurrentUserNik { get; set; } = "";
     [Parameter] public bool ShowAll { get; set; }
     [Parameter] public int AllCount { get; set; }
+    /// @all is listed but greyed: an admin switched it off for ordinary members.
+    [Parameter] public bool AllOff { get; set; }
+    /// The caller's @all budget for the hint under the @all row; null = not loaded yet (no hint).
+    [Parameter] public MentionAllQuotaDto? AllQuota { get; set; }
     [Parameter] public EventCallback<PopupPick> OnPick { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
@@ -86,6 +104,31 @@
     }
 
     public async Task PickSelected() => await Pick(selectedIndex);
+
+    private bool AllLimitReached => !AllOff && AllQuota is { } q && q.Used >= q.Limit;
+
+    /// "2 of 3 @all left…" with one dot per @all (filled = still available), or the orange cap notice.
+    private RenderFragment AllHint(MentionAllQuotaDto q) => __builder =>
+    {
+        var left = Math.Max(0, q.Limit - q.Used);
+        var reached = left == 0;
+        <div class="mi-hint @(reached ? "reached" : "")" role="note">
+            <i data-lucide="@(reached ? "circle-alert" : "info")"></i>
+            @if (reached && q.ResetsAt is { } at)
+            {
+                <span>You used @q.Used of @q.Limit @@all in the last @q.WindowMinutes minutes. It will go out as plain text until <b>@at.ToLocalTime().ToString("HH:mm")</b>.</span>
+            }
+            else if (reached)
+            {
+                <span>You used @q.Used of @q.Limit @@all in the last @q.WindowMinutes minutes. It will go out as plain text.</span>
+            }
+            else
+            {
+                <span>@left of @q.Limit @@all left for the next @q.WindowMinutes minutes in this group</span>
+            }
+            <span class="dots" aria-hidden="true">@for (var d = 0; d < q.Limit; d++) { <i class="@(d < left ? "" : "used")"></i> }</span>
+        </div>
+    };
 
     private sealed class PopupItem { public MemberDto? Member; public bool IsAll; public int AllCount; public string Label = ""; }
     public sealed record PopupPick(MemberDto? Member, bool IsAll);

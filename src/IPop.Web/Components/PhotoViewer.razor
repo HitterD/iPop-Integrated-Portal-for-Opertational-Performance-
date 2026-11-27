@@ -10,7 +10,13 @@
             @if (!string.IsNullOrEmpty(Viewer.Name)) { <span class="photo-viewer-name">@Viewer.Name</span> }
             <button type="button" class="photo-viewer-x" title="Close" aria-label="Close" @onclick="Viewer.Close"><i data-lucide="x"></i></button>
         </div>
-        <img src="@Viewer.Url" alt="Photo of @Viewer.Name" @onclick:stopPropagation="true" />
+        <img class="@(Viewer.Square ? "pv-square" : null)" src="@Viewer.Url" alt="Photo of @Viewer.Name" @onclick:stopPropagation="true" />
+        @if (Viewer.ActionLabel is not null)
+        {
+            <div class="photo-viewer-foot" @onclick:stopPropagation="true">
+                <button type="button" class="pv-action" @onclick="Viewer.RunActionAsync"><i data-lucide="camera"></i> @Viewer.ActionLabel</button>
+            </div>
+        }
     </div>
 }
 

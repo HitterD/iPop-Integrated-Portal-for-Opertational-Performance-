@@ -305,6 +305,8 @@
     // text or the room's member directory actually changes.
     private string? _htmlFor;
     private ChatRoomDto? _htmlRoom;
+    private bool _htmlPlainAll;
+    private const string MentionAllChip = "<span class=\"mention mention-all-tag\" title=\"Everyone in this group\">@all</span>";
     private string _html = "";
 
     private string RenderedContent
@@ -314,11 +316,14 @@
             if (string.IsNullOrWhiteSpace(Message.Content) || IsAttachmentPlaceholder(Message))
                 return "";
             var room = ChatSvc.ActiveRoom;
-            if (ReferenceEquals(_htmlFor, Message.Content) && ReferenceEquals(_htmlRoom, room)) return _html;
+            // A sent @all past the cap (or switched off) went out as plain text: show it plain, not as a chip.
+            var plainAll = !Message.MentionsAll && !isPending && Message.Type is "text" or null;
+            if (ReferenceEquals(_htmlFor, Message.Content) && ReferenceEquals(_htmlRoom, room) && _htmlPlainAll == plainAll) return _html;
             var text = Message.Content.StartsWith("[forwarded]") ? Message.Content.Substring("[forwarded]".Length).TrimStart() : Message.Content;
             var dir = new SimpleDir(room);
             var html = MentionRenderer.ToHtml(text, dir, room?.Type == "group", Auth.Me?.Nik, LegacyMentionNames(room));
-            (_htmlFor, _htmlRoom, _html) = (Message.Content, room, ChatFormatters.FormatMarkdown(html));
+            if (plainAll) html = html.Replace(MentionAllChip, "<span class=\"mention plain\">@all</span>", StringComparison.Ordinal);
+            (_htmlFor, _htmlRoom, _htmlPlainAll, _html) = (Message.Content, room, plainAll, ChatFormatters.FormatMarkdown(html));
             return _html;
         }
     }

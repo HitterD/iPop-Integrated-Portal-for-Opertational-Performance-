@@ -377,7 +377,10 @@
                 }
                 else
                 {
-                    <button type="button" class="header-avatar-btn" style="background:@GetActiveRoomColor()" title="Group info" aria-label="Group info" @onclick="ToggleDetailPanel">
+                    <button type="button" class="header-avatar-btn @(ChatSvc.ActiveRoom.AvatarUrl is not null ? "has-photo" : "")" style="background:@GetActiveRoomColor()"
+                            title="@(ChatSvc.ActiveRoom.AvatarUrl is not null && ChatSvc.ActiveRoom.Type == "group" ? "View group photo" : "Group info")"
+                            aria-label="@(ChatSvc.ActiveRoom.AvatarUrl is not null && ChatSvc.ActiveRoom.Type == "group" ? "View group photo" : "Group info")"
+                            @onclick="HeaderAvatarClick">
                         @if (ChatSvc.ActiveRoom.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @GetActiveRoomInitials() }
                     </button>
                 }
@@ -541,6 +544,7 @@
                     }
 
                     @* ---- Messages ---- *@
+                    <div class="date-float" aria-hidden="true" @ref="datePillRef"></div>
                     <div class="messages" @ref="messagesRef">
                         @if (ChatSvc.RoomError == ChatLoadError.Unavailable)
                         {
@@ -753,6 +757,18 @@
                         </button>
                     }
 
+                    @if (swipeTipVisible && Phone.IsPhone)
+                    {
+                        <div class="sw-tip" role="note">
+                            <i data-lucide="hand"></i>
+                            <span>Tip: swipe a message right to reply, left for who has read it. Press and hold for more.</span>
+                            <button type="button" @onclick="DismissSwipeTip">Got it</button>
+                        </div>
+                    }
+                    @if (mentionAllNotice is { } man)
+                    {
+                        <div class="at-toast" role="status"><i data-lucide="circle-alert"></i><span><b>@man.Lead</b> @man.Text</span></div>
+                    }
                     @* ---- Apple-style Composer ---- *@
                     <div class="composer-wrap" @ref="composerWrapRef" data-uploading="@(uploading ? "true" : "false")">
                         @* v6: emoji popover (smile inside the input) and the "+" menu; stickers live under "+". *@
@@ -822,6 +838,8 @@
                                           CurrentUserNik="@GetCurrentUserNik()"
                                           ShowAll="mentionShowAll"
                                           AllCount="MentionAllCount"
+                                          AllOff="MentionAllOff"
+                                          AllQuota="mentionAllQuota"
                                           OnPick="HandleMentionPick" />
                         }
                         else if (projectMatches.Any() || taskMatches.Any())
@@ -920,6 +938,7 @@
                         }
                         <div class="composer v6-composer">
                             <InputFile @ref="fileInput" OnChange="OnFileSelected" class="hidden-input" accept="*/*" multiple />
+                            <InputFile @ref="groupPhotoInput" OnChange="OnGroupPhotoSelected" class="hidden-input" accept="image/png,image/jpeg,image/webp,image/gif" />
                             @if (Phone.IsPhone)
                             {
                                 @* CH2 Gallery / Camera: same upload path, narrower pickers. *@
@@ -1233,10 +1252,26 @@
                                     OnLeave="@(ChatSvc.ActiveRoom.Type == "group" ? EventCallback.Factory.Create(this, LeaveGroup) : default)"
                                     OnProfile="OpenUserProfile">
                                     <Avatar>
-                                        <div class="m-chat-gav" style="background:@GetActiveRoomColor()">
-                                            @if (ChatSvc.ActiveRoom.AvatarUrl is not null) { <img src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" /> } else { @GetActiveRoomInitials() }
-                                        </div>
+                                        @if (ChatSvc.ActiveRoom.Type == "group" && (ChatSvc.ActiveRoom.AvatarUrl is not null || CanManageMembers))
+                                        {
+                                            <button type="button" class="m-chat-gav gp-photo" style="background:@GetActiveRoomColor()" aria-label="@(ChatSvc.ActiveRoom.AvatarUrl is not null ? "View group photo" : "Add group photo")" @onclick="OpenGroupPhoto">
+                                                @if (ChatSvc.ActiveRoom.AvatarUrl is not null) { <img src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" /> } else { @GetActiveRoomInitials() }
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <div class="m-chat-gav" style="background:@GetActiveRoomColor()">
+                                                @if (ChatSvc.ActiveRoom.AvatarUrl is not null) { <img src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" /> } else { @GetActiveRoomInitials() }
+                                            </div>
+                                        }
                                     </Avatar>
+                                    <Extra>
+                                        @if (ChatSvc.ActiveRoom.Type == "group" && IsGroupAdmin)
+                                        {
+                                            <IPop.Web.Components.Chat.MentionAllSwitch Allowed="ChatSvc.ActiveRoom.AllowMemberMentionAll" Busy="mentionAllSwitchBusy"
+                                                MemberCount="ChatSvc.ActiveRoom.MemberCount" OnChange="SetMemberMentionAll" />
+                                        }
+                                    </Extra>
                                 </IPop.Web.Components.Phone.Chat.ChatInfoPhone>
                             }
                             else
@@ -1259,9 +1294,9 @@
                                     else
                                     {
                                         <div class="panel-hero">
-                                            <div class="panel-hero-av @(ChatSvc.ActiveRoom.Type == "group" ? "group-av" : "person-av")" style="background:@GetActiveRoomColor()">
-                                                @if (ChatSvc.ActiveRoom.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @GetActiveRoomInitials() }
-                                            </div>
+                                            <IPop.Web.Components.Chat.GroupPhotoHero Room="ChatSvc.ActiveRoom" Color="@GetActiveRoomColor()" Initials="@GetActiveRoomInitials()"
+                                                PhotoSrc="@(ChatSvc.ActiveRoom.AvatarUrl is { } hu ? PhotoUrl(hu) : null)" CanChange="CanManageMembers" Busy="groupPhotoUploading"
+                                                OnOpen="OpenGroupPhoto" OnChange="PickGroupPhoto" />
                                             <div class="panel-hero-name">@GetActiveRoomName()</div>
                                             @if (ChatSvc.ActiveRoom.Type == "dm" && dmPerson is not null && !string.IsNullOrWhiteSpace(dmPerson.Department) && dmPerson.Department != "—")
                                             {
@@ -1316,6 +1351,11 @@
 
                                     <!-- Inset Grouped Lists -->
                                     <div class="inset-groups">
+                                        @if (ChatSvc.ActiveRoom.Type == "group" && IsGroupAdmin)
+                                        {
+                                            <IPop.Web.Components.Chat.MentionAllSwitch Allowed="ChatSvc.ActiveRoom.AllowMemberMentionAll" Busy="mentionAllSwitchBusy"
+                                                MemberCount="ChatSvc.ActiveRoom.MemberCount" OnChange="SetMemberMentionAll" />
+                                        }
                                         @if (ChatSvc.ActiveRoom.Type == "group")
                                         {
                                             <!-- Group Members -->
@@ -1831,6 +1871,13 @@
 @* ---- Context Menu ---- *@
 @* Sticker editor modal: "+ Create" in the picker and "Make sticker" on chat images. *@
 <StickerEditor @ref="stickerEditor" OnSaved="OnStickerEditorSaved" />
+
+@if (phoneInfoMsgId is { } piId && ChatSvc.ActiveMessages.FirstOrDefault(m => m.Id == piId) is { } piMsg)
+{
+    <IPop.Web.Components.Phone.Chat.MessageInfoSheet Message="piMsg" Own="@(piMsg.SenderNik == GetCurrentUserNik())"
+        IsGroup="@(ChatSvc.ActiveRoom?.Type == "group")" OnClose="() => phoneInfoMsgId = null"
+        Preview="@(piMsg.IsDeleted || IsAttachmentPlaceholder(piMsg) ? (piMsg.Attachments.Count > 0 ? "Attachment" : null) : IPop.Application.Chat.Mentions.MentionPlainText.Project(piMsg.Content, 140))" />
+}
 
 @if (phoneActsMsgId is { } paId && ChatSvc.ActiveMessages.FirstOrDefault(m => m.Id == paId) is { } paMsg)
 {
