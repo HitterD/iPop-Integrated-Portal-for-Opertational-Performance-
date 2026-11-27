@@ -113,12 +113,13 @@ public sealed partial class ChatService
                 a.MessageId = reply.Id;
         }
 
-        parent.ThreadReplyCount++;
-        parent.LastThreadReplyAt = now;
-
         // The reply and its durable push intent must commit together, just like a top-level message.
         IPop.Infrastructure.Notifications.Push.PushQueue.Add(db, "chat", reply.Id);
         await db.SaveChangesAsync(ct);
+        // Atomic in SQL: two replies at once (or a stale tracked parent) must not overwrite each other's count.
+        await db.ChatMessages.Where(m => m.Id == parent.Id).ExecuteUpdateAsync(u => u
+            .SetProperty(m => m.ThreadReplyCount, m => m.ThreadReplyCount + 1)
+            .SetProperty(m => m.LastThreadReplyAt, now), ct);
         if (reply.Type == "sticker") await StickerService.RecordUseAsync(db, senderId, reply.Content, ct);
 
         var saved = await db.ChatMessages
