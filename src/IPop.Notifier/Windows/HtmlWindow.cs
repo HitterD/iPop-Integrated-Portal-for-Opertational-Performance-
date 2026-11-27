@@ -129,7 +129,7 @@ public class HtmlWindow : Form
         Native.DarkTitle(Handle, Theme.IsDark);
         try
         {
-            await WebHost.InitAsync(View, page, (type, msg) => BeginInvoke(() => HandleMessage(type, msg)));
+            await WebHost.InitAsync(View, page, (type, msg) => BeginInvoke(() => HandleMessage(type, msg)), CaptureSource);
         }
         catch (Exception ex)
         {
@@ -161,6 +161,9 @@ public class HtmlWindow : Form
     }
 
     protected virtual void OnReady() { }
+
+    /// Remote host page only (hotfix 1.8.2): which screen its WebView2 environment shares ("Screen 2"…); null = normal.
+    protected virtual string? CaptureSource => null;
 
     /// The page could not be created at all (WebView2 refused): windows without a visible UI (the remote host) end
     /// their work here instead of waiting for a "ready" that never comes.

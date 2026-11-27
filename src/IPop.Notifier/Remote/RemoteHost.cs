@@ -101,6 +101,7 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         files.Clear();
         ActiveChanged?.Invoke(true);
         monitor = 0;
+        preset = "auto";
         var bounds = Monitors.Bounds(monitor);
         input.Monitor = bounds;
         JsonNode? join;
@@ -133,16 +134,7 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         alive.Start();
         _ = Task.Delay(20_000).ContinueWith(_ => Log.UploadAsync(api));
         sharing = false;
-        page = new HostPage(this);
-        page.Ready += () => page?.Send(new { type = "join", info = join, quality = "auto", screen = Screen() });
-        page.WebViewFailed += ex => Post(() =>
-        {
-            if (sessionId != id) return;
-            balloon("Remote help", "Your screen couldn't be shared. ICT has been told.", ToolTipIcon.Warning);
-            _ = EndAsync("error");
-        });
-        page.CreateControl();
-        _ = page.Handle;
+        page = NewPage(id, p => p.Send(new { type = "join", info = join, quality = preset, screen = Screen() }));
         // WebView2 can fail to make the hidden page (0x8007139F) or the capture can hang: end with a reason after the
         // deadline instead of leaving the helper on "Connecting…".
         _ = Task.Delay(ShareDeadline).ContinueWith(_ => Post(() =>
@@ -154,44 +146,18 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         }));
     }
 
-    /// What the host page shares: always one whole screen through getDisplayMedia (hotfix 1.8.1).
-    private static object Screen() => new { multi = false };
-
-    /// The helper picked another monitor (or All): input, frame and the shared picture follow.
-    private void SwitchMonitor(int index)
-    {
-        // Hotfix 1.8.1: one fixed screen is shared, so picking another monitor is off until it can really follow.
-        if (!MonitorPicking) { SendMonitors(); return; }
-        var count = System.Windows.Forms.Screen.AllScreens.Length;
-        if (count < 2 || page is null) return;
-        monitor = index == Monitors.All ? Monitors.All : Math.Clamp(index, 0, count - 1);
-        var bounds = Monitors.Bounds(monitor);
-        input.ReleaseAll();
-        input.Monitor = bounds;
-        if (frame is not null) frame.Bounds = bounds;
-        page.Send(new { type = "screen", screen = Screen() });
-        SendMonitors();
-        Log.Info("remote", $"monitor → {monitor} {bounds}");
-    }
-
-    private static readonly bool MonitorPicking = false;
-
-    private void SendMonitors() => page?.Send(new { type = "send", topic = "ctl", msg = Monitors.Describe(monitor, MonitorPicking && System.Windows.Forms.Screen.AllScreens.Length > 1) });
-
     /// Messages from the hidden LiveKit page.
-    internal void FromPage(string type, JsonNode? m)
+    internal void FromPage(HostPage from, string type, JsonNode? m)
     {
+        // A page being replaced (monitor switch) may still talk while it leaves: only the current page counts.
+        if (!ReferenceEquals(from, page)) { if (type is "joined" or "failed") from.Send(new { type = "leave" }); return; }
         if (type is not ("data" or "file")) Log.Info("remote", "host page: " + type + " " + (m?.ToJsonString() is { } j ? j[..Math.Min(300, j.Length)] : ""));
         switch (type)
         {
             case "joined":
                 JoinResult(true);
                 sharing = true;
-                // WebView2 shares "Screen 1" = the main monitor (the picture is scaled, so its size can't identify it):
-                // input and the green frame go there.
-                monitor = 0;
-                input.Monitor = Monitors.Bounds(monitor);
-                if (frame is not null) frame.Bounds = input.Monitor;
+                Shared(m);
                 // The helper learns what may be used and which monitors exist.
                 page?.Send(new { type = "send", topic = "ctl", msg = new { t = "perms", list = perms.ToList(), mode } });
                 SendMonitors();
@@ -299,6 +265,7 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         try { page?.Send(new { type = "leave" }); } catch { }
         var p = page; page = null;
         _ = Task.Delay(1500).ContinueWith(_ => Post(() => p?.Dispose()));
+        Retire(leaving);
         clip?.Dispose(); clip = null;
         stat?.Dispose(); stat = null;
         alive?.Dispose(); alive = null;

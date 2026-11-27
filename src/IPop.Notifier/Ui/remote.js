@@ -36,6 +36,7 @@
     room.registerByteStreamHandler('clip-file', async (reader, from) => (R.onClipFile || (() => { }))(reader, from));
     room.registerByteStreamHandler('clip-data', async (reader, from) => (R.onClipData || (() => { }))(reader, from));
     await room.connect(info.url, info.token, { autoSubscribe: true });
+    if (R.role === 'host') { R.preferHardwareH264(); }
     if (R.role === 'host') await R.publishScreen(quality || R.preset || 'auto', screen);
     return room;
   };
@@ -53,10 +54,34 @@
   // ("Entire screen" with one monitor, "Screen 1" with several). 1.8.1: the 1.8.0 whole-desktop path
   // (getUserMedia chromeMediaSource:'screen' + crop) was refused or hung on PCs with two monitors in WebView2 158,
   // so nobody with two monitors could be helped; it is gone.
+  // Hotfix 1.8.2 (measured on a two-monitor Windows 11 PC, WebView2 158): 1.8.1 capped Auto at 30 fps and encoded
+  // with OpenH264 (software) because LiveKit offers H.264 constrained-baseline 42e01f first; Smooth reached ~48 fps
+  // only. Now: Auto 60 fps / "motion" hint with a 15 fps sharp layer underneath for slow links (smooth when moving,
+  // LiveKit drops to the sharp layer when the network can't keep up), Smooth 60 fps, Sharp 30 fps at full size; every
+  // preset prefers the hardware H.264 encoder (profile 42001f → D3D12VideoEncodeAccelerator).
   const PRESETS = {
-    auto: { maxW: 1920, maxH: 1080, fps: 30, bitrate: 6_000_000, simulcast: true, degrade: 'balanced', hint: 'detail' },
-    smooth: { maxW: 1920, maxH: 1080, fps: 60, bitrate: 8_000_000, degrade: 'maintain-framerate', hint: 'motion' },
+    auto: { maxW: 1920, maxH: 1080, fps: 60, bitrate: 8_000_000, simulcast: true, degrade: 'balanced', hint: 'motion' },
+    smooth: { maxW: 1920, maxH: 1080, fps: 60, bitrate: 10_000_000, degrade: 'maintain-framerate', hint: 'motion' },
     quality: { maxW: 2560, maxH: 1440, fps: 30, bitrate: 12_000_000, degrade: 'maintain-resolution', hint: 'detail' },
+  };
+  R.PRESETS = PRESETS; // QA: fps checks per preset
+  // Hardware H.264 first: WebView2 encodes constrained-baseline 42e01f with OpenH264 (software, ~45 fps at 1080p on
+  // an office PC), but High profile with the GPU (D3D12VideoEncodeAccelerator). The company LiveKit answers only
+  // 42e01f and High 64001f, so High (64…) goes first, then the rest of H.264, then other codecs. Sorting the codec
+  // list on every video transceiver this page creates keeps LiveKit untouched (its bundle has no such option).
+  const rankCodec = c => { const f = c.sdpFmtpLine || ''; return !/h264/i.test(c.mimeType) ? 20 : /profile-level-id=64/.test(f) ? (/packetization-mode=1/.test(f) ? 0 : 1) : 10; };
+  R.preferHardwareH264 = () => {
+    const proto = window.RTCPeerConnection && RTCPeerConnection.prototype;
+    if (!proto || proto.__ipopHw || !window.RTCRtpSender?.getCapabilities) return;
+    const add = proto.addTransceiver;
+    proto.addTransceiver = function (what, init) {
+      const tr = add.call(this, what, init);
+      const kind = typeof what === 'string' ? what : what && what.kind;
+      try { if (kind === 'video' && tr.setCodecPreferences) tr.setCodecPreferences([...RTCRtpSender.getCapabilities('video').codecs].sort((a, b) => rankCodec(a) - rankCodec(b))); }
+      catch (e) { post({ type: 'log', text: 'codec preference ' + (e && e.message) }); }
+      return tr;
+    };
+    proto.__ipopHw = true;
   };
   const CAPTURE_TIMEOUT_MS = 15000;
   async function capture(p) {
@@ -80,7 +105,7 @@
     const track = new LK.LocalVideoTrack(mst, undefined, false);
     R.screenPub = await R.room.localParticipant.publishTrack(track, {
       source: LK.Track.Source.ScreenShare, videoCodec: 'h264', simulcast: !!p.simulcast,
-      screenShareSimulcastLayers: p.simulcast ? [LK.ScreenSharePresets.h720fps15] : undefined,
+      screenShareSimulcastLayers: p.simulcast ? [LK.ScreenSharePresets.h1080fps15] : undefined,
       screenShareEncoding: { maxBitrate: p.bitrate, maxFramerate: p.fps },
       videoEncoding: { maxBitrate: p.bitrate, maxFramerate: p.fps },
       degradationPreference: p.degrade,

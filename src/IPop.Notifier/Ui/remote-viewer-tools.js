@@ -38,8 +38,7 @@
     $('#monName').textContent = cur ? (cur.index === -1 ? 'All' : cur.name.replace(' · Main', '')) : 'Monitor 1';
     $('#monOf').textContent = m.current === -1 ? `${m.count}/${m.count}` : `${(m.current || 0) + 1}/${m.count}`;
     $('#mon').disabled = !m.switchable;
-    // Hotfix 1.8.1: with several monitors the main one is shown (choosing another comes later).
-    $('#mon').title = m.switchable ? 'Choose monitor' : m.count > 1 ? 'Showing the main monitor of ' + m.count : 'The user\'s PC has one monitor';
+    $('#mon').title = m.switchable ? 'Choose monitor' : 'The user\'s PC has one monitor';
   }
 
   $('#mon').onclick = e => {

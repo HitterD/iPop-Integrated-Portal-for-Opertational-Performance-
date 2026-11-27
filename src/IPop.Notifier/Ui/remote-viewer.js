@@ -193,12 +193,13 @@
     R.sendReliable({ t: 'quality', preset: b.dataset.q });
   };
 
-  // Position inside the video picture (letterboxed), normalised 0..1.
+  // Position inside the PICTURE, normalised 0..1 (hotfix 1.8.2). The element is bigger than the picture whenever
+  // the window's shape differs from the user's screen (object-fit contain = black bars; cover = cropped), so 1.8.1
+  // dividing by the element rect put the cursor up to ~100 px off, growing towards the edges.
   function norm(e) {
     if (!video) return null;
-    const r = video.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-    return x < 0 || y < 0 || x > 1 || y > 1 ? null : { x: +x.toFixed(5), y: +y.toFixed(5) };
+    const p = viewerMap.toPicture(video.getBoundingClientRect(), video.videoWidth, video.videoHeight, getComputedStyle(video).objectFit, e.clientX, e.clientY);
+    return p && { x: +p.x.toFixed(5), y: +p.y.toFixed(5) };
   }
   let lastMove = 0, pending = null;
   stage.addEventListener('mousemove', e => {

@@ -23,7 +23,7 @@ public sealed partial class RemoteHost
                 mode = perms.ClampMode(msg["mode"]?.GetValue<string>());
                 if (mode == "view") input.ReleaseAll();
                 break;
-            case "quality": page?.Send(new { type = "quality", preset = msg["preset"]?.GetValue<string>() }); break;
+            case "quality": preset = Preset(msg["preset"]?.GetValue<string>()); page?.Send(new { type = "quality", preset }); break;
             case "clipSync": clipSync = perms.ClampClipSync(msg["on"]?.GetValue<bool>() == true); break;
             case "monitor": SwitchMonitor(msg["index"]?.GetValue<int>() ?? 0); break;
             case "media": _ = ShowMediaAsync(msg); break;

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using IPop.Notifier.Core;
 using Microsoft.Web.WebView2.Core;
+using IPop.Notifier.Remote;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace IPop.Notifier.Windows;
@@ -20,16 +21,37 @@ public static partial class WebHost
     /// which matches nothing on a PC with two monitors, so the capture never started there (hotfix 1.8.1).
     public const string CaptureSource = "creen";
 
+    private const string BaseArgs = "--disable-features=msSmartScreenProtection --renderer-process-limit=3 --unsafely-treat-insecure-origin-as-secure=http://notifier.ipop,http://media.notifier.ipop,http://files.notifier.ipop";
+
     public static Task<CoreWebView2Environment> EnvironmentAsync() => env ??= CoreWebView2Environment.CreateAsync(null,
         Path.Combine(SessionStore.Folder, "WebView2"),
-        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=3 --auto-select-desktop-capture-source=\"" + CaptureSource + "\" --unsafely-treat-insecure-origin-as-secure=http://notifier.ipop,http://media.notifier.ipop,http://files.notifier.ipop" + QaDebugPort()));
+        new CoreWebView2EnvironmentOptions(BaseArgs + " --auto-select-desktop-capture-source=\"" + CaptureSource + "\"" + QaDebugPort()));
 
-    private static string QaDebugPort()
+    /// Hotfix 1.8.2: the remote host page shares ONE chosen monitor. The capture source is fixed per WebView2 environment
+    /// (a browser argument), so each monitor gets its own environment and data folder: "Screen 1", "Screen 2"… With one
+    /// monitor the source is "Entire screen" (matched by <see cref="CaptureSource"/>). Switching monitor = a new host page
+    /// in the other environment, which rejoins the same LiveKit room.
+    private static readonly Dictionary<string, Task<CoreWebView2Environment>> captureEnvs = [];
+
+    public static string CaptureSourceFor(int monitorIndex, int monitorCount) =>
+        monitorCount > 1 ? $"Screen {monitorIndex + 1}" : CaptureSource;
+
+    public static Task<CoreWebView2Environment> CaptureEnvironmentAsync(string source)
+    {
+        if (captureEnvs.TryGetValue(source, out var e)) return e;
+        var folder = Path.Combine(SessionStore.Folder, "WebView2-capture", source.Replace(' ', '-'));
+        return captureEnvs[source] = CoreWebView2Environment.CreateAsync(null, folder,
+            new CoreWebView2EnvironmentOptions(BaseArgs + " --auto-select-desktop-capture-source=\"" + source + "\"" + QaDebugPort(1)));
+    }
+
+    private static int captureEnvCount;
+
+    private static string QaDebugPort(int offset = 0)
     {
 #if DEBUG
-        // QA only (Debug builds): lets Playwright attach over CDP to drive the windows.
-        if (int.TryParse(Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_CDP"), out var port) && port is > 1024 and < 65536)
-            return $" --remote-debugging-port={port}";
+        // QA only (Debug builds): lets Playwright attach over CDP to drive the windows (capture environments: port +1…).
+        if (int.TryParse(Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_CDP"), out var port) && port is > 1024 and < 65000)
+            return $" --remote-debugging-port={port + (offset == 0 ? 0 : 10 + Interlocked.Increment(ref captureEnvCount))}";
 #endif
         return "";
     }
@@ -42,17 +64,18 @@ public static partial class WebHost
         catch { return true; }
     }
 
-    public static async Task InitAsync(WebView2 view, string page, Action<string, JsonNode?> onMessage)
+    public static async Task InitAsync(WebView2 view, string page, Action<string, JsonNode?> onMessage, string? captureSource = null)
     {
         view.DefaultBackgroundColor = Color.Transparent;
-        try { await view.EnsureCoreWebView2Async(await EnvironmentAsync()); }
+        Func<Task<CoreWebView2Environment>> pick = captureSource is null ? EnvironmentAsync : () => CaptureEnvironmentAsync(captureSource);
+        try { await view.EnsureCoreWebView2Async(await pick()); }
         catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == InvalidState && !view.IsDisposed)
         {
             // 0x8007139F (hotfix 1.8.1): Microsoft's advice is a new environment and one more try (e.g. after the
             // WebView2 runtime updated underneath us). A second failure goes to the window's friendly fallback.
             Log.Warn("webview", $"{page}: controller refused (0x8007139F), retrying with a new environment");
-            env = null;
-            await view.EnsureCoreWebView2Async(await EnvironmentAsync());
+            if (captureSource is null) env = null; else captureEnvs.Remove(captureSource);
+            await view.EnsureCoreWebView2Async(await pick());
         }
         var core = view.CoreWebView2;
         core.SetVirtualHostNameToFolderMapping("notifier.ipop", AppInfo.BaseDir, CoreWebView2HostResourceAccessKind.DenyCors);
@@ -86,7 +109,14 @@ public static partial class WebHost
         // Remote help: the hidden host page shares the screen without Chrome's picker (the user already said Allow
         // in our own prompt); every other page is refused.
         core.PermissionRequested += (_, e) => e.State = page == "remote-host.html" ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny;
-        core.ScreenCaptureStarting += (_, e) => { e.Handled = true; e.Cancel = page != "remote-host.html"; };
+        core.ScreenCaptureStarting += (_, e) =>
+        {
+            e.Handled = true;
+            e.Cancel = page != "remote-host.html";
+            // Hotfix 1.8.2: Chromium's own "… is sharing your screen · Stop sharing" bar is hidden; the green frame
+            // and "ICT is helping you" window (with End session) stay, so the user still sees and controls the session.
+            if (!e.Cancel) ScreenShareBar.HideSoon();
+        };
         core.WebMessageReceived += (_, e) =>
         {
             JsonNode? msg;

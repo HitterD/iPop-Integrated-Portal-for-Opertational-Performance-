@@ -60,14 +60,13 @@ public sealed partial class RemoteHost
         var count = System.Windows.Forms.Screen.AllScreens.Length;
         if (monitor != Monitors.All && monitor >= count) monitor = 0;
         if (count < 2 && monitor == Monitors.All) monitor = 0;
-        var bounds = Monitors.Bounds(monitor);
         input.ReleaseAll();
-        input.Monitor = bounds;
-        if (frame is not null) frame.Bounds = bounds;
-        page?.Send(new { type = "screen", screen = Screen() });
         page?.Send(new { type = "send", topic = "ctl", msg = new { t = "monchange", count } });
-        SendMonitors();
-        Log.Info("remote", $"displays changed → {count} monitor(s), using {monitor} {bounds}");
+        // The capture source names change with the monitor count ("Entire screen" ↔ "Screen 1"): re-share the same
+        // monitor (or the main one if it went away) in the matching environment.
+        if (monitor == Monitors.All) monitor = 0;
+        SwitchMonitor(Math.Min(monitor, count - 1), force: true);
+        Log.Info("remote", $"displays changed → {count} monitor(s), sharing {monitor}");
     });
 
     /// The page lost LiveKit (network, sleep) or crashed: rejoin with a fresh token until the policy's window runs out.
@@ -116,10 +115,7 @@ public sealed partial class RemoteHost
         if (page is { IsDisposed: false } && !pageCrashed) return;
         pageCrashed = false;
         var old = page;
-        page = new HostPage(this);
-        page.Ready += () => page.Send(new { type = "noop" });
-        page.CreateControl();
-        _ = page.Handle;
+        page = NewPage(sessionId ?? Guid.Empty, p => p.Send(new { type = "noop" }));
         try { old?.Dispose(); } catch { }
     }
 
