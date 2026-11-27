@@ -33,7 +33,7 @@ internal static class Monitors
     {
         var list = List();
         var items = list.Select((s, i) => (object)new { index = i, name = $"Monitor {i + 1}" + (s.Primary ? " · Main" : ""), size = $"{s.Bounds.Width}×{s.Bounds.Height}" }).ToList();
-        if (list.Length > 1 && switchable) items.Add(new { index = All, name = "All", size = "combined" });
+        // Hotfix 1.8.2: Monitor 1 ↔ Monitor 2 only; "All" comes with native capture.
         return new { t = "monitors", current, count = list.Length, switchable, items };
     }
 }
