@@ -47,7 +47,7 @@
     catch { snack('The copied file could not be sent'); }
   });
 
-  let joining = false;
+  let joining = false, noScreen = null;
   async function join() {
     if (joining) return;
     joining = true;
@@ -60,6 +60,7 @@
       if (track.kind !== 'video') return;
       video = track.attach(); video.muted = true; video.playsInline = true;
       stage.querySelectorAll('video').forEach(v => v.remove());
+      clearTimeout(noScreen);
       stage.prepend(video); $('#wait').style.display = 'none'; $('#ghost').hidden = mediaOn === null && !$('#showMedia').classList.contains('on');
       live('Controlling', '');
       stage.focus();
@@ -90,6 +91,13 @@
     // The user's PC left the room: it is reconnecting (network, sleep, crash) unless it said bye.
     R.onPeer = (p, joined) => { if (p.identity.startsWith('host:') && !ended) { if (!joined) hostGone = setTimeout(() => reconnect(), 4000); else clearTimeout(hostGone); } };
     try { await R.join(r.json); log('connected; peers ' + R.room.remoteParticipants.size); } catch (e) { log('connect failed ' + (e.name + ': ' + e.message)); return showEnded('Couldn\'t connect', String(e.message || e)); }
+    // Hotfix 1.8.1: "Connecting…" is never endless. No picture within a minute → say so and end the session.
+    noScreen = setTimeout(async () => {
+      if (ended || video) return;
+      log('no screen within 60 s');
+      try { await api('POST', `api/notifier/remote/sessions/${sessionId}/end`, { files: '' }); } catch { }
+      showEnded('The screen did not arrive', 'The user\'s PC accepted but could not share its screen. Try again, or ask them to restart iPop Notifier.');
+    }, 60000);
     viewerTools.joined(r.json);
     viewerPrefs.applyQuality(R);
     setMode(r.json.mode);

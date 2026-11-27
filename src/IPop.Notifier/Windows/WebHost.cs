@@ -15,9 +15,14 @@ public static partial class WebHost
     public static string MediaCache => Path.Combine(SessionStore.Folder, "media-cache");
     private static Task<CoreWebView2Environment>? env;
 
+    /// The remote host's screen capture picks its source without a picker: the first source whose title contains this.
+    /// One monitor is titled "Entire screen", several are "Screen 1", "Screen 2"… — 1.8.0 asked for "Entire screen",
+    /// which matches nothing on a PC with two monitors, so the capture never started there (hotfix 1.8.1).
+    public const string CaptureSource = "creen";
+
     public static Task<CoreWebView2Environment> EnvironmentAsync() => env ??= CoreWebView2Environment.CreateAsync(null,
         Path.Combine(SessionStore.Folder, "WebView2"),
-        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=3 --auto-select-desktop-capture-source=\"Entire screen\" --enable-usermedia-screen-capturing --unsafely-treat-insecure-origin-as-secure=http://notifier.ipop,http://media.notifier.ipop,http://files.notifier.ipop" + QaDebugPort()));
+        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=3 --auto-select-desktop-capture-source=\"" + CaptureSource + "\" --unsafely-treat-insecure-origin-as-secure=http://notifier.ipop,http://media.notifier.ipop,http://files.notifier.ipop" + QaDebugPort()));
 
     private static string QaDebugPort()
     {
@@ -29,6 +34,8 @@ public static partial class WebHost
         return "";
     }
 
+    private const int InvalidState = unchecked((int)0x8007139F);
+
     public static bool RuntimeMissing()
     {
         try { return string.IsNullOrEmpty(CoreWebView2Environment.GetAvailableBrowserVersionString()); }
@@ -38,7 +45,15 @@ public static partial class WebHost
     public static async Task InitAsync(WebView2 view, string page, Action<string, JsonNode?> onMessage)
     {
         view.DefaultBackgroundColor = Color.Transparent;
-        await view.EnsureCoreWebView2Async(await EnvironmentAsync());
+        try { await view.EnsureCoreWebView2Async(await EnvironmentAsync()); }
+        catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == InvalidState && !view.IsDisposed)
+        {
+            // 0x8007139F (hotfix 1.8.1): Microsoft's advice is a new environment and one more try (e.g. after the
+            // WebView2 runtime updated underneath us). A second failure goes to the window's friendly fallback.
+            Log.Warn("webview", $"{page}: controller refused (0x8007139F), retrying with a new environment");
+            env = null;
+            await view.EnsureCoreWebView2Async(await EnvironmentAsync());
+        }
         var core = view.CoreWebView2;
         core.SetVirtualHostNameToFolderMapping("notifier.ipop", AppInfo.BaseDir, CoreWebView2HostResourceAccessKind.DenyCors);
         // Remote-help media (pictures/videos from the helper), cached in the data folder; read-only to pages.
