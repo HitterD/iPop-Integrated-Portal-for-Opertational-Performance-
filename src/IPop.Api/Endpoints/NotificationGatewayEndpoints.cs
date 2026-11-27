@@ -196,8 +196,14 @@ public static partial class NotificationGatewayEndpoints
             var types = (pref.MutedTypes ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            if (req.Muted) types.Add(req.Type.Trim().ToLowerInvariant());
-            else types.Remove(req.Type.Trim().ToLowerInvariant());
+            var normalized = req.Type.Trim().ToLowerInvariant();
+            if (req.Muted) types.Add(normalized);
+            else
+            {
+                types.Remove(normalized);
+                if (normalized == NotificationCategory.Meeting) types.Remove("call");
+                else if (normalized == NotificationCategory.Task) types.Remove("project");
+            }
 
             pref.MutedTypes = string.Join(',', types);
             pref.UpdatedAt = DateTime.UtcNow;

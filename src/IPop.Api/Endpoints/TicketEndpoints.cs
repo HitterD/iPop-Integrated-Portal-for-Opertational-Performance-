@@ -62,6 +62,20 @@ public static class TicketEndpoints
             Results.Ok(new { url = IdeskLinks.Public($"{IdeskOptions.CurrentPublicUrl}/tickets/{ideskTicketId}",
                 IdeskOptions.CurrentPublicUrl, IdeskOptions.CurrentSignInWithIpop) }));
 
+        // Live preview (facts + public messages) for the assigned agent's /idesk/tickets/{id} notification.
+        g.MapGet("/idesk/{ideskTicketId:guid}/preview", (Guid ideskTicketId, HttpContext http, ITicketService svc, CancellationToken ct) =>
+            Run(http, async me =>
+            {
+                var r = await svc.GetIdeskPreviewAsync(me, ideskTicketId, ct);
+                return r.Kind switch
+                {
+                    IdeskPreviewKind.Ok => Results.Ok(r.Preview),
+                    IdeskPreviewKind.NotFound => NotFound(),
+                    IdeskPreviewKind.NotConfigured => NotConfigured(),
+                    _ => Unreachable(r.Message),
+                };
+            }));
+
         // A text reply from the iPop Notifier toast: on my ticket (id), or as the assigned agent on an iDesk ticket id.
         g.MapPost("/{ticketRef}/reply", (string ticketRef, TicketReplyRequest req, HttpContext http, ITicketService svc, CancellationToken ct) =>
             Run(http, async me =>
