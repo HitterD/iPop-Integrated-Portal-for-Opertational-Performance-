@@ -231,7 +231,9 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
             var receipt = await db.ChatReadReceipts.AsNoTracking()
                 .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == userId.Value, Context.ConnectionAborted);
             var reader = new SeenByDto(userId.Value, user.Name, user.PhotoPath, receipt?.DeliveredAt, receipt?.ReadAt);
-            await notifier.NotifySeenUpdateAsync(roomId, messageId, reader, Context.ConnectionAborted);
+            // A reader with read receipts off must not reveal that they read: no seenUpdate at all.
+            if (receipt?.ReadAt is not null)
+                await notifier.NotifySeenUpdateAsync(roomId, messageId, reader, Context.ConnectionAborted);
         }
     }
 

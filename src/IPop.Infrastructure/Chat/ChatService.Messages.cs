@@ -644,6 +644,11 @@ public sealed partial class ChatService
         return new PagedResult<RoomListDto>(roomDtos, totalCount, 1, 20);
     }
 
+    /// "Clear history" hides messages for this user everywhere, search included.
+    internal IQueryable<ChatMessage> ExcludeCleared(IQueryable<ChatMessage> q, Guid userId)
+        => q.Where(m => !db.ChatRoomUserSettings.Any(s => s.RoomId == m.RoomId && s.UserId == userId
+            && s.ClearedAt != null && m.CreatedAt <= s.ClearedAt));
+
     public async Task<PagedResult<MessageDto>> SearchMessagesAsync(Guid userId, Guid roomId, string query, int page, int pageSize, CancellationToken ct)
     {
         if (query.Length < 2)
@@ -661,6 +666,7 @@ public sealed partial class ChatService
             .AsNoTracking()
             .Where(m => m.RoomId == roomId && m.ThreadParentId == null && !m.IsDeleted
                 && EF.Functions.ILike(m.Content, pattern));
+        messagesQuery = ExcludeCleared(messagesQuery, userId);
 
         var totalCount = await messagesQuery.CountAsync(ct);
 
@@ -696,6 +702,8 @@ public sealed partial class ChatService
             .Where(m => m.ThreadParentId == null && !m.IsDeleted
                 && EF.Functions.ILike(m.Content, pattern)
                 && db.ChatRoomMembers.Any(mm => mm.RoomId == m.RoomId && mm.UserId == userId && mm.LeftAt == null));
+
+        messagesQuery = ExcludeCleared(messagesQuery, userId);
 
         var totalCount = await messagesQuery.CountAsync(ct);
 

@@ -640,7 +640,7 @@ public static class ChatEndpoints
                 .Select(u => new { u.Name, u.PhotoPath }).FirstOrDefaultAsync(ct);
             var receipt = await db.ChatReadReceipts.AsNoTracking()
                 .FirstOrDefaultAsync(r => r.MessageId == latest.Id && r.UserId == userId.Value, ct);
-            if (reader is not null)
+            if (reader is not null && receipt?.ReadAt is not null)
                 await notifier.NotifySeenUpdateAsync(roomId, latest.Id,
                     new SeenByDto(userId.Value, reader.Name, reader.PhotoPath, receipt?.DeliveredAt, receipt?.ReadAt), ct);
             return Results.NoContent();
