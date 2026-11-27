@@ -208,6 +208,7 @@ public static class ChatEndpoints
                     var e when e?.Contains("expired") == true => "edit_window_expired",
                     var e when e?.Contains("content_too_long") == true => "content_too_long",
                     var e when e?.Contains("not found") == true => "message_not_found",
+                    "not_editable" => "not_editable",
                     _ => "forbidden"
                 };
                 return Results.Json(new { code, message = result.Error }, statusCode: statusCode);

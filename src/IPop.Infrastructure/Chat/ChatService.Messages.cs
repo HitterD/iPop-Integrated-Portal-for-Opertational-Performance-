@@ -294,11 +294,16 @@ public sealed partial class ChatService
         if (newContent.Length > 4000)
             return new MessageResultDto(false, null, "content_too_long");
 
+        // Same graph as the send/history paths: without ReplyTo and Room.Members the edited
+        // DTO loses its quote and a group message is mapped as a DM (wrong read status).
         var message = await db.ChatMessages
             .Include(m => m.Sender)
+            .Include(m => m.Room).ThenInclude(r => r.Members)
             .Include(m => m.Attachments)
             .Include(m => m.Reactions)
             .Include(m => m.ReadReceipts)
+            .Include(m => m.ReplyTo).ThenInclude(r => r!.Sender)
+            .Include(m => m.ReplyTo).ThenInclude(r => r!.Attachments)
             .FirstOrDefaultAsync(m => m.Id == messageId, ct);
 
         if (message is null)
@@ -309,6 +314,12 @@ public sealed partial class ChatService
 
         if (message.SenderId != userId)
             return new MessageResultDto(false, null, "forbidden");
+        // Only plain text is editable: system lines ("X removed Y"), stickers, polls and note
+        // cards must not be rewritten into arbitrary text by their sender.
+        if (message.Type != "text"
+            || message.Content.StartsWith("[poll]", StringComparison.Ordinal)
+            || message.Content.StartsWith("[note]", StringComparison.Ordinal))
+            return new MessageResultDto(false, null, "not_editable");
         // Someone who left (or was removed from) the room no longer changes what its members read.
         if (!await db.ChatRoomMembers.AsNoTracking().AnyAsync(m => m.RoomId == message.RoomId && m.UserId == userId && m.LeftAt == null, ct))
             return new MessageResultDto(false, null, "forbidden");
@@ -357,6 +368,9 @@ public sealed partial class ChatService
             return new MessageResultDto(false, null, "message_not_found");
 
         if (message.SenderId != userId && !isAdmin)
+            return new MessageResultDto(false, null, "forbidden");
+        // Membership lines are the group's record: only an admin may remove them, not their "author".
+        if (message.Type == "system" && !isAdmin)
             return new MessageResultDto(false, null, "forbidden");
 
         message.IsDeleted = true;
